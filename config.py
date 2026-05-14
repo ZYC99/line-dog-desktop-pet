@@ -2,7 +2,7 @@ import os, sys
 
 # 路径
 if getattr(sys, 'frozen', False):
-    BASE_DIR = os.path.dirname(sys.executable)
+    BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -12,14 +12,21 @@ DATA_FILE = os.path.join(DATA_DIR, "pet_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # 窗口
-WINDOW_SIZE = 200
+WINDOW_SIZE = 180
 WORK_MODE_SIZE = 80
 TICK_MS = 100
+DEFAULT_RIGHT_MARGIN_RATIO = 0.10
 
 # 尺寸预设
-SIZE_PRESETS = {"大": 300, "中": 200, "小": 120}
+SIZE_PRESETS = {"大": 270, "中": 180, "小": 120}
 SIZE_MIN = 80
 SIZE_MAX = 400
+INTERACTION_MIN_MS = 5_000
+INTERACTION_TIMEOUT_MS = 5_000
+MOOD_SHORT_CHECK_MS = 20_000
+MOOD_SHORT_PLAY_MS = 5_000
+MOOD_LONG_CHECK_MS = 60_000
+MOOD_LONG_PLAY_MS = 60_000
 
 # 属性衰减 (per tick, 100ms per tick)
 HUNGER_DECAY = 0.001     # 0.6/min → 满条约 2.8 小时耗尽

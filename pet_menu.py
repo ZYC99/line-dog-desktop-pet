@@ -133,9 +133,9 @@ class PetMenu(QMenu):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(6)
 
-        lbl = QLabel("🔍 尺寸")
-        lbl.setStyleSheet("color: #ccc; font-size: 11px;")
-        layout.addWidget(lbl)
+        self._size_label = QLabel()
+        self._size_label.setStyleSheet("color: #ccc; font-size: 11px;")
+        layout.addWidget(self._size_label)
 
         # 预设按钮行
         btn_row = QHBoxLayout()
@@ -146,25 +146,36 @@ class PetMenu(QMenu):
             btn.setFixedHeight(36)
             btn.setProperty("szbtn", True)
             btn.setStyleSheet("")
-            btn.clicked.connect(lambda checked, p=px: self._cb_size(p))
+            btn.clicked.connect(lambda checked, p=px: self._set_slider_size(p))
             btn_row.addWidget(btn)
         layout.addLayout(btn_row)
 
         # 滑块
-        slider = QSlider(Qt.Orientation.Horizontal)
-        slider.setRange(SIZE_MIN, SIZE_MAX)
-        slider.setValue(current)
-        slider.setFixedHeight(20)
-        slider.valueChanged.connect(self._cb_size)
-        layout.addWidget(slider)
+        self._size_slider = QSlider(Qt.Orientation.Horizontal)
+        self._size_slider.setRange(SIZE_MIN, SIZE_MAX)
+        self._size_slider.setValue(current)
+        self._size_slider.setFixedHeight(20)
+        self._size_slider.valueChanged.connect(self._cb_size)
+        layout.addWidget(self._size_slider)
+        self._update_size_label(current)
 
         wa = QWidgetAction(self)
         wa.setDefaultWidget(w)
         self.addAction(wa)
 
+    def _set_slider_size(self, value):
+        if self._size_slider.value() == value:
+            self._cb_size(value)
+            return
+        self._size_slider.setValue(value)
+
     def _cb_size(self, value):
+        self._update_size_label(value)
         if "set_size" in self.cb:
             self.cb["set_size"](value)
+
+    def _update_size_label(self, value):
+        self._size_label.setText(f"🔍 尺寸 {int(value)}px")
 
     def _add_action(self, text, key, enabled):
         action = QAction(text, self)

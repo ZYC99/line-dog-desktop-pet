@@ -29,7 +29,7 @@ class PetAnimation(QObject):
             for gif in gifs:
                 path = os.path.join(cat_path, gif)
                 movie = QMovie(path)
-                movie.setCacheMode(QMovie.CacheMode.CacheAll)
+                movie.setCacheMode(QMovie.CacheMode.CacheNone)
                 self._movies[category].append(movie)
 
     def has_category(self, category: str) -> bool:

@@ -1,4 +1,4 @@
-import sys, os, random, time
+import sys, os, random, time, warnings
 from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QSystemTrayIcon, QMenu as QSysMenu
 from PySide6.QtGui import QAction, QIcon, QPixmap, QMovie
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
@@ -39,6 +39,9 @@ class PetWindow(QMainWindow):
         self._last_state_change = time.time()
         self._interaction_in_progress = False
         self._interaction_id = 0
+        self._interaction_started_at = 0
+        self._mood_id = 0
+        self._mood_until = 0
         self._last_mouse_leave = time.time()
         self._last_hover_greet = 0        # 上次鼠标经过打招呼时间
         self._hover_timer = QTimer(self)
@@ -53,7 +56,10 @@ class PetWindow(QMainWindow):
         # 初始化
         self._set_size(self.stats.pet_size)
         self.move(self.stats.x, self.stats.y)
-        self._play("idle")
+        if self.anim.has_category("greet"):
+            self._play_startup_greet()
+        else:
+            self._play("idle")
         self._apply_topmost()
         self._apply_click_through()
 
@@ -70,20 +76,53 @@ class PetWindow(QMainWindow):
         self._save_timer.timeout.connect(self.stats.save)
         self._save_timer.start(60_000)  # 每分钟自动保存
 
+        # 心情动画
+        self._mood_timer = QTimer(self)
+        self._mood_timer.timeout.connect(self._run_mood_cycle)
+        self._reset_mood_timer()
+
     # ===== 窗口 =====
     def _set_size(self, size):
         self.setFixedSize(size, size)
         self.label.setFixedSize(size, size)
         self.stats.pet_size = size
+        self._sync_current_movie_size()
+
+    def _sync_current_movie_size(self):
+        movie = self.label.movie()
+        if movie:
+            frame = movie.currentFrameNumber()
+            movie.setScaledSize(self.label.size())
+            if frame >= 0:
+                movie.jumpToFrame(frame)
 
     def _set_pet_size(self, size):
         """统一尺寸调整入口（菜单回调）"""
         size = max(SIZE_MIN, min(SIZE_MAX, int(size)))
+        center = self.frameGeometry().center()
         self._set_size(size)
+        self.move(center - self.rect().center())
+        self._clamp_window_position()
+        self.stats.x = self.x()
+        self.stats.y = self.y()
+
+    def _clamp_window_position(self):
+        screen = QApplication.primaryScreen().availableGeometry()
+        max_x = screen.x() + screen.width() - self.width()
+        max_y = screen.y() + screen.height() - self.height()
+        x = max(screen.x(), min(self.x(), max_x))
+        y = max(screen.y(), min(self.y(), max_y))
+        self.move(x, y)
+
+    def _effective_topmost(self):
+        return self.stats.topmost or self.stats.work_mode
+
+    def _effective_click_through(self):
+        return self.stats.click_through
 
     def _apply_topmost(self):
         flags = self.windowFlags()
-        if self.stats.topmost:
+        if self._effective_topmost():
             flags |= Qt.WindowType.WindowStaysOnTopHint
         else:
             flags &= ~Qt.WindowType.WindowStaysOnTopHint
@@ -91,24 +130,24 @@ class PetWindow(QMainWindow):
         self.show()
 
     def _apply_click_through(self):
-        if self.stats.click_through:
-            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-        else:
-            self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        self.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            self._effective_click_through(),
+        )
 
     # ===== 动画 =====
     def _play(self, category: str, once: bool = False):
         """播放指定分类的 GIF"""
-        if self._interaction_in_progress and category not in ("walk", "idle", "jump"):
+        if self._interaction_in_progress:
             return  # 互动中不被打断
 
         movie = self.anim.get_random(category)
         if movie is None:
             return
 
+        self._disconnect_movie_signals(movie)
         self.label.setMovie(movie)
         movie.setScaledSize(self.label.size())
-        movie.loopCount = -1
         movie.start()
 
         self._state = category
@@ -116,6 +155,8 @@ class PetWindow(QMainWindow):
 
     def _play_walk(self, dx: int, dy: int):
         """播放走路/跳跃动画"""
+        if self._interaction_in_progress:
+            return
         if dy < 0:  # 向上走
             movie = self.anim.get_walk(0)  # jump
         elif dx > 0:
@@ -124,6 +165,7 @@ class PetWindow(QMainWindow):
             movie = self.anim.get_walk(-1)
 
         if movie:
+            self._disconnect_movie_signals(movie)
             self.label.setMovie(movie)
             movie.setScaledSize(self.label.size())
             movie.start()
@@ -137,22 +179,19 @@ class PetWindow(QMainWindow):
 
         if self._interaction_in_progress:
             return
+        if self.stats.work_mode:
+            return
 
         idle_time = time.time() - self._last_state_change
 
+        if time.time() < self._mood_until:
+            return
+
         # 状态触发（高优先级）
-        if self.stats.is_angry and self.anim.has_category("angry"):
-            self._play_once("angry"); return
         if self.stats.is_hungry and self.anim.has_category("hungry"):
             self._play_once("hungry"); return
         if self.stats.is_dirty and self.anim.has_category("dirty"):
             self._play_once("dirty"); return
-        if self.stats.is_sad and self.anim.has_category("sad"):
-            self._play_once("sad"); return
-
-        # 好感度高随机开心
-        if self.stats.is_happy and self.anim.has_category("happy") and random.random() < 0.005:
-            self._play_once("happy"); return
 
         # 空闲分层
         if idle_time >= IDLE_SLEEP_MIN and random.random() < 0.001:
@@ -168,25 +207,119 @@ class PetWindow(QMainWindow):
 
     def _play_once(self, category: str):
         """播放一次非循环动画，然后回到 idle"""
+        if self._interaction_in_progress:
+            return False
         movie = self.anim.get_random(category)
         if not movie:
-            return
+            return False
+        self._mood_until = 0
         self.label.setMovie(movie)
-        movie.loopCount = 1
         movie.setScaledSize(self.label.size())
-        movie.start()
         self._state = category
         self._interaction_in_progress = True
         self._interaction_id += 1
+        self._interaction_started_at = time.time()
         current_id = self._interaction_id
-        try:
-            movie.finished.disconnect()
-        except RuntimeError:
-            pass
-        movie.finished.connect(lambda: self._end_interaction())
-        QTimer.singleShot(5000, lambda: self._force_end_interaction(current_id))
+        self._disconnect_movie_signals(movie)
+        movie.frameChanged.connect(
+            lambda frame, m=movie, cid=current_id: self._end_once_movie(m, frame, cid)
+        )
+        movie.finished.connect(lambda cid=current_id: self._end_interaction(cid))
+        movie.start()
+        self._schedule_single_shot(
+            INTERACTION_TIMEOUT_MS,
+            lambda: self._force_end_interaction(current_id),
+        )
+        return True
 
-    def _end_interaction(self):
+    def _schedule_single_shot(self, ms, callback):
+        QTimer.singleShot(ms, callback)
+
+    def _play_startup_greet(self):
+        if self.anim.has_category("greet"):
+            self._play_once("greet")
+
+    def _reset_mood_timer(self):
+        interval = MOOD_LONG_CHECK_MS if self.stats.affection > 90 else MOOD_SHORT_CHECK_MS
+        self._mood_timer.start(interval)
+
+    def _run_mood_cycle(self):
+        if self.stats.work_mode or self._interaction_in_progress:
+            self._reset_mood_timer()
+            return
+
+        affection = self.stats.affection
+        if affection > 90:
+            self._mood_timer.setInterval(MOOD_LONG_CHECK_MS)
+            category = random.choice(["idle", "happy"])
+            if category == "happy":
+                self._play_timed_mood("happy", MOOD_LONG_PLAY_MS)
+            else:
+                self._play("idle")
+            return
+
+        self._mood_timer.setInterval(MOOD_SHORT_CHECK_MS)
+        if affection > 80:
+            if random.random() < 0.5:
+                self._play_timed_mood("happy", MOOD_SHORT_PLAY_MS)
+            else:
+                self._play("idle")
+            return
+
+        if affection > 50:
+            self._play("idle")
+            return
+
+        if random.random() < 0.5:
+            self._play_timed_mood("angry", MOOD_SHORT_PLAY_MS)
+        else:
+            self._play("idle")
+
+    def _play_timed_mood(self, category, duration_ms):
+        if self._interaction_in_progress or self.stats.work_mode or not self.anim.has_category(category):
+            return False
+        self._mood_id += 1
+        current_id = self._mood_id
+        self._mood_until = time.time() + duration_ms / 1000
+        self._play(category)
+        self._schedule_single_shot(duration_ms, lambda: self._end_mood(current_id))
+        return True
+
+    def _end_mood(self, mood_id):
+        if self._mood_id != mood_id or self._interaction_in_progress:
+            return
+        self._mood_until = 0
+        self._play("idle")
+
+    def _disconnect_movie_signals(self, movie):
+        for signal in (movie.finished, movie.frameChanged):
+            self._safe_disconnect(signal)
+
+    @staticmethod
+    def _safe_disconnect(signal, slot=None):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            try:
+                if slot is None:
+                    signal.disconnect()
+                else:
+                    signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+
+    def _end_once_movie(self, movie, frame, interaction_id):
+        if not self._interaction_in_progress or self._interaction_id != interaction_id:
+            return
+        frame_count = movie.frameCount()
+        if frame_count > 0 and frame >= frame_count - 1:
+            if (time.time() - self._interaction_started_at) * 1000 < INTERACTION_MIN_MS:
+                return
+            movie.stop()
+            QTimer.singleShot(0, lambda: self._end_interaction(interaction_id))
+
+    def _end_interaction(self, interaction_id=None):
+        if interaction_id is not None and self._interaction_id != interaction_id:
+            return
         self._interaction_in_progress = False
         self._play("idle")
 
@@ -326,8 +459,7 @@ class PetWindow(QMainWindow):
 
     # ===== 菜单 =====
     def _show_menu(self, pos):
-        self.stats.x = self.x()
-        self.stats.y = self.y()
+        self._sync_position_for_save()
 
         callbacks = {
             "feed": self._do_feed,
@@ -345,7 +477,7 @@ class PetWindow(QMainWindow):
         menu.exec(pos)
 
     def _do_feed(self):
-        if not self.stats.can_do("feed"):
+        if self._interaction_in_progress or not self.stats.can_do("feed"):
             return
         if self.stats.hunger >= 100:
             self.stats.do_action("feed")
@@ -359,29 +491,31 @@ class PetWindow(QMainWindow):
             self._play_once("eat")
 
     def _do_bath(self):
-        if not self.stats.can_do("bath"):
+        if self._interaction_in_progress or not self.stats.can_do("bath"):
             return
         self.stats.bath()
         self._play_once("bath")
 
     def _do_greet(self):
-        if not self.stats.can_do("greet"):
+        if self._interaction_in_progress or not self.stats.can_do("greet"):
             return
         self.stats.greet()
         self._play_once("greet")
 
     def _do_play(self):
-        if not self.stats.can_do("play"):
+        if self._interaction_in_progress or not self.stats.can_do("play"):
             return
         self.stats.play()
         self._play_once("play")
 
     def _toggle_work(self):
-        self.stats.work_mode = not self.stats.work_mode
         if self.stats.work_mode:
-            self._enter_work()
-        else:
+            self.stats.work_mode = False
             self._exit_work()
+        else:
+            self._sync_position_for_save()
+            self.stats.work_mode = True
+            self._enter_work()
 
     def _enter_work(self):
         self._work_prev_size = self.stats.pet_size  # 记住用户尺寸
@@ -392,20 +526,20 @@ class PetWindow(QMainWindow):
             screen.width() - WORK_MODE_SIZE - WORK_MARGIN_RIGHT,
             screen.height() - WORK_MODE_SIZE - WORK_MARGIN_BOTTOM,
         )
-        self.stats.topmost = True
-        self.stats.click_through = True
         self._apply_click_through()
         self._apply_topmost()
+        self._setup_tray_menu()
         # 先 show 再设动画
         if self.anim.has_category("work"):
             self._play("work")
 
     def _exit_work(self):
         self._set_size(self.stats.pet_size)
-        self.stats.click_through = False
         self._apply_click_through()
         self._apply_topmost()
+        self._setup_tray_menu()
         self.move(self.stats.x, self.stats.y)
+        self._clamp_window_position()
         self._play("idle")
 
     def _toggle_topmost(self):
@@ -415,6 +549,7 @@ class PetWindow(QMainWindow):
     def _toggle_click_through(self):
         self.stats.click_through = not self.stats.click_through
         self._apply_click_through()
+        self._setup_tray_menu()
 
     # ===== 系统托盘 =====
     def _setup_tray(self):
@@ -423,11 +558,13 @@ class PetWindow(QMainWindow):
         icon = QIcon()
         idle_gifs = self.anim._movies.get("idle", [])
         if idle_gifs:
-            movie = idle_gifs[0]
-            movie.start()
-            movie.jumpToFrame(0)
+            movie = QMovie(idle_gifs[0].fileName())
+            movie.setCacheMode(QMovie.CacheMode.CacheAll)
+            self._tray_icon_movie = movie
+            self._tray_icon_movie.start()
+            self._tray_icon_movie.jumpToFrame(0)
             # 等一帧渲染
-            QTimer.singleShot(100, lambda: self._set_tray_icon(movie))
+            QTimer.singleShot(100, lambda: self._set_tray_icon(self._tray_icon_movie))
         else:
             self.tray.setIcon(self.style().standardIcon(
                 self.style().StandardPixmap.SP_ComputerIcon))
@@ -446,12 +583,21 @@ class PetWindow(QMainWindow):
         show_action = QAction("显示/隐藏", self)
         show_action.triggered.connect(self._toggle_visible)
         menu.addAction(show_action)
+        if self.stats.click_through:
+            click_action = QAction("关闭鼠标穿透", self)
+            click_action.triggered.connect(self._disable_click_through)
+            menu.addAction(click_action)
+        if self.stats.work_mode:
+            work_action = QAction("退出打工模式", self)
+            work_action.triggered.connect(self._exit_work_from_tray)
+            menu.addAction(work_action)
         menu.addSeparator()
         quit_action = QAction("退出", self)
         quit_action.triggered.connect(self._quit)
         menu.addAction(quit_action)
 
         self.tray.setContextMenu(menu)
+        self._safe_disconnect(self.tray.activated, self._tray_click)
         self.tray.activated.connect(self._tray_click)
 
     def _tray_click(self, reason):
@@ -464,17 +610,30 @@ class PetWindow(QMainWindow):
         else:
             self.show()
 
+    def _disable_click_through(self):
+        self.stats.click_through = False
+        self._apply_click_through()
+        self._setup_tray_menu()
+
+    def _exit_work_from_tray(self):
+        if self.stats.work_mode:
+            self._toggle_work()
+        self._setup_tray_menu()
+
     # ===== 生命周期 =====
-    def closeEvent(self, event):
-        if not getattr(self, '_quitting', False):
+    def _sync_position_for_save(self):
+        if not self.stats.work_mode:
             self.stats.x = self.x()
             self.stats.y = self.y()
+
+    def closeEvent(self, event):
+        if not getattr(self, '_quitting', False):
+            self._sync_position_for_save()
             self.stats.save()
         event.accept()
 
     def _quit(self):
         self._quitting = True
-        self.stats.x = self.x()
-        self.stats.y = self.y()
+        self._sync_position_for_save()
         self.stats.save()
         QApplication.quit()
