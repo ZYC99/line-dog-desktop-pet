@@ -1,9 +1,13 @@
 name: Build Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -14,10 +18,15 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install deps
-        run: pip install PySide6 pyinstaller
+        run: python -m pip install -r requirements.txt
+      - name: Test
+        run: |
+          $env:QT_QPA_PLATFORM='offscreen'
+          python -m unittest test_regressions.py
+          python -m py_compile main.py config.py pet_stats.py pet_animation.py pet_menu.py pet_window.py test_regressions.py
       - name: Build
         run: |
-          pyinstaller --onefile --noconsole --name LineDogPet --add-data "assets;assets" main.py
+          python -m PyInstaller --onefile --noconsole --name LineDogPet --add-data "assets;assets" main.py
       - name: Release
         uses: softprops/action-gh-release@v1
         with:
