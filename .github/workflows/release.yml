@@ -1,0 +1,26 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install PySide6 pyinstaller
+      - name: Build
+        run: |
+          pyinstaller --onefile --noconsole --name LineDogPet --add-data "assets;assets" main.py
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/LineDogPet.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
