@@ -16,7 +16,7 @@
 - Modify `pet_stats.py`: optional data-file injection for tests and typed/clamped JSON loading.
 - Modify `main.py`: testable single-instance helper functions with stale server-name cleanup.
 - Modify `test_regressions.py`: add regression tests for all remaining findings.
-- Modify `REVIEW_FINDINGS.md`: move fixed findings into the repaired section after implementation.
+- Modify `docs/REVIEW_FINDINGS.md`: move fixed findings into the repaired section after implementation.
 
 ---
 
@@ -530,7 +530,7 @@ Expected: pass.
 ### Task 5: Update Review Record And Run Full Verification
 
 **Files:**
-- Modify: `REVIEW_FINDINGS.md`
+- Modify: `docs/REVIEW_FINDINGS.md`
 
 - [ ] **Step 1: Update findings record**
 
@@ -603,6 +603,6 @@ Check:
 
 ## Self-Review
 
-- Spec coverage: covers all remaining review findings recorded in `REVIEW_FINDINGS.md`.
+- Spec coverage: covers all remaining review findings recorded in `docs/REVIEW_FINDINGS.md`.
 - Placeholder scan: no placeholder tasks remain; each task has exact files, test code, implementation code, and commands.
 - Type consistency: helper names used by tests match implementation steps: `_sync_position_for_save`, `start_local_server`, `data_file`, and `data_dir`.

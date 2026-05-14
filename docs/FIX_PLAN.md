@@ -173,7 +173,7 @@ btn.setStyleSheet("")
 
 ## 新增：CODE_MAP.md
 
-在项目根目录 `D:/软件安装/line-dog-desktop-pet/CODE_MAP.md` 创建：
+在项目文档目录 `docs/CODE_MAP.md` 创建：
 
 ```markdown
 # 代码地图 — 线条小狗桌宠
@@ -261,6 +261,6 @@ btn.setStyleSheet("")
 
 1. 修改 `pet_window.py`：GIF 缩放 + 喂食 + 打工动画
 2. 修改 `pet_menu.py`：按钮质感
-3. 创建 `CODE_MAP.md`
+3. 创建 `docs/CODE_MAP.md`
 4. 语法检查全部文件
 5. 启动验证
