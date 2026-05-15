@@ -22,3 +22,4 @@
 - [superpowers/plans/2026-05-14-remaining-review-fixes.md](superpowers/plans/2026-05-14-remaining-review-fixes.md): 自动计划执行记录。
 - [../CLAUDE.md](../CLAUDE.md): 代码编写规范和项目约束，保留在根目录方便工具读取。
 - [../README.md](../README.md): 项目入口。
+- [../README.en.md](../README.en.md): English project README.
