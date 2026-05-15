@@ -1,18 +1,22 @@
 # 打工模式键盘映射功能 — 开发规格文档
 
-> 版本: v2.0 最终规格
+> 版本: v2.1 实施修订
 > 创建: 2026-05-15
-> 目标: 打工模式下全局热键注册 + 小狗按键盘 + 可视反馈
+> 目标: 打工模式下全局热键映射 + 小狗按键盘 + 键盘可视反馈
 
 ---
 
 ## 1. 功能概述
 
-打工模式下，线条小狗坐在键盘上方。用户按下热键时：
+打工模式下，线条小狗坐在键盘上方。用户按下已配置热键时：
 1. 键盘浮现 + 对应按键高亮
 2. 小狗切到 keypress 姿势
 3. 执行映射动作
 4. 松手后键盘保持 10 秒，无新按键则渐变淡出
+
+实现上分两层：
+- **热键映射层**：优先用 Windows `RegisterHotKey` 捕获已配置组合键，负责触发动作。
+- **按键视觉层**：若需要精确 key down/key up、高亮释放和持续按键状态，使用 `WH_KEYBOARD_LL` 低级键盘钩子；否则在 `RegisterHotKey` 模式下用短暂自动释放模拟视觉反馈。
 
 ---
 
@@ -22,17 +26,17 @@
 |---|--------|------|
 | 1 | 整合方式 | **方案 B**：复用 BongoCat 键盘 PNG 素材，PySide6 QLabel 叠层渲染 |
 | 2 | 窗口布局 | **布局 C**：正方形窗口，小狗在上、键盘缩小叠底 |
-| 3 | 全局热键 | ctypes + Windows `RegisterHotKey`，零额外依赖 |
+| 3 | 全局热键 | Phase 1 用 ctypes + Windows `RegisterHotKey`；精确按下/松开再加 `WH_KEYBOARD_LL` |
 | 4 | 键盘显示策略 | 右键菜单可开关，默认隐藏，首次按键浮现 |
 | 5 | 自动隐藏 | 松手后 10 秒内无新按键 → 键盘**渐变淡出** |
 | 6 | 按键高亮 | 复用 BongoCat `left-keys/*.png` + `right-keys/*.png` |
-| 7 | 按键范围 | 全键盘 58+4 键 PNG，完整拷贝 |
-| 8 | 小狗动画 | 按键时切 keypress GIF，松手后 10s 回 work GIF |
+| 7 | 按键范围 | BongoCat keyboard 素材实测为 55 个主键 + 4 个方向键 PNG |
+| 8 | 小狗动画 | 按键触发时切 keypress GIF；视觉释放后 10s 回 work GIF |
 | 9 | 键盘缩放 | 随窗口等比缩放，小狗:键盘比例固定 |
-| 10 | 配置方式 | 拖拽式可视化键盘配键窗口 |
+| 10 | 配置方式 | Phase 1 先做 JSON/列表式配置；拖拽式可视化配键放 Phase 3 |
 | 11 | 默认状态 | 进打工不显示键盘，第一次按键才浮现 |
 | 12 | 过渡效果 | 渐变淡出（改变窗口/图层透明度） |
-| 13 | 鼠标检测 | **Phase 3/4 待开发**（Live2D 与 PySide6 不兼容） |
+| 13 | 鼠标检测 | 暂不纳入本功能；BongoCat 的 Live2D 鼠标参数不适用于当前 PySide6 GIF 方案 |
 | 14 | 键盘素材 | 全量复用 BongoCat `public/models/keyboard/resources/` |
 
 ---
@@ -95,8 +99,18 @@
 | 素材路径 | 用途 | 数量 |
 |----------|------|------|
 | `assets/png/keyboard/background.png` | 键盘底图 (612×354) | 1 |
-| `assets/png/keyboard/left-keys/*.png` | 主键盘区按键高亮 | 58 |
+| `assets/png/keyboard/left-keys/*.png` | 主键盘区按键高亮 | 55 |
 | `assets/png/keyboard/right-keys/*.png` | 方向键高亮 | 4 |
+
+BongoCat `keyboard` 模型当前支持的主键素材：
+- 字母：`KeyA` 到 `KeyZ`
+- 数字：`Num0` 到 `Num9`
+- 修饰键：`Alt`、`AltGr`、`Control`、`ControlLeft`、`ControlRight`、`Shift`、`ShiftLeft`、`ShiftRight`、`Meta`、`Fn`
+- 功能键：`Escape`、`Tab`、`CapsLock`、`Backspace`、`Delete`、`Return`、`Space`
+- 符号键：`BackQuote`、`Slash`
+- 方向键：`UpArrow`、`DownArrow`、`LeftArrow`、`RightArrow`
+
+注意：BongoCat keyboard 素材没有独立的 `F1`-`F12` PNG。若热键包含功能键，视觉层统一回退到 `Fn`，除非后续补充新素材。
 
 ### 5.2 需要新增
 
@@ -116,7 +130,7 @@
 | 文件 | 职责 |
 |------|------|
 | `pet_keymapper.py` | 热键配置加载、映射管理、回调分发、10s 倒计时 |
-| `keyboard_hook.py` | Windows `RegisterHotKey` 注册/注销（ctypes） |
+| `keyboard_hook.py` | Windows `RegisterHotKey` 注册/注销；可选 `WH_KEYBOARD_LL` 按下/松开监听（ctypes） |
 | `pet_keyboard_overlay.py` | 键盘叠层 UI：QLabel 组合渲染、透明度控制 |
 
 ### 6.2 可能改动的文件
@@ -144,6 +158,7 @@ PetKeyMapper(QObject)
 ├── _mappings: dict           // {hotkey_id: action_config}
 ├── _active_keys: set         // 当前按下的键
 ├── _hide_timer: QTimer       // 10 秒倒计时
+├── _suppress_until: float     // 执行模拟输入时短暂抑制自触发
 ├── load_config(path)         // 加载 JSON 配置
 ├── on_key_down(key_id)       // 按键事件分发
 ├── on_key_up(key_id)         // 松键事件
@@ -151,15 +166,23 @@ PetKeyMapper(QObject)
 
 KeyboardHook(QObject)
 ├── register_hotkey(mod, vk, callback)
+├── install_low_level_hook(callback)
 ├── unregister_all()
-└── _native_handler(msg)      // WM_HOTKEY 处理
+└── _native_handler(msg)      // WM_HOTKEY / WH_KEYBOARD_LL 处理
 ```
+
+实现边界：
+- Phase 1 只要求 `RegisterHotKey` 触发动作，可用自动释放模拟视觉反馈。
+- Phase 2 若要做到真实“松手后 10 秒”，再启用 `WH_KEYBOARD_LL` 捕获 key up；这个钩子必须在退出打工模式、退出应用时可靠卸载。
+- `simulate_keys` / `type_text` 应使用 Windows `SendInput`，并在执行期间短暂抑制自身热键监听，避免模拟出的按键再次触发映射。
 
 ---
 
 ## 7. 热键配置格式
 
-`config/hotkeys.json`：
+用户配置保存到 `%APPDATA%\LineDogPet\hotkeys.json`，在代码中通过 `config.DATA_DIR` 拼接路径。不要把用户编辑后的配置写入项目目录或 PyInstaller 解包目录。
+
+配置格式：
 
 ```json
 {
@@ -202,9 +225,17 @@ KeyboardHook(QObject)
 | `simulate_keys` | 模拟组合键 | `{"keys": ["ctrl","c"]}` |
 | `type_text` | 输入文本 | `{"text": "你好"}` |
 
+配置约束：
+- `id` 必须唯一。
+- `key_name` 必须对应现有 PNG 素材名；功能键可统一映射到 `Fn`。
+- `open_program` 默认只允许普通可执行文件路径或系统命令；路径不存在时应给出可恢复错误，不应崩溃。
+- `simulate_keys` 和 `type_text` 执行期间需要短暂抑制热键监听，避免自触发循环。
+
 ---
 
 ## 8. 键盘状态机
+
+说明：在仅使用 `RegisterHotKey` 的 Phase 1 中，系统不会提供真实 key up 事件；`按键松开` 由 `PetKeyMapper` 的自动释放定时器近似模拟。启用 `WH_KEYBOARD_LL` 后，状态机才按真实松键事件运行。
 
 ```
                   ┌─────────────────┐
@@ -252,8 +283,9 @@ KeyboardHook(QObject)
 │                                         │
 │   ┌─────── 键盘映射视图 ──────────┐    │
 │   │                               │    │
-│   │   [Esc] [F1]...[F12]          │    │
-│   │   [1][2][3]...[0][-][=] [⌫] │    │    │   │   [Tab][Q][W]...[P][⌂]       │    │
+│   │   [Esc] [Fn]                  │    │
+│   │   [1][2][3]...[0] [⌫]        │    │
+│   │   [Tab][Q][W]...[P]           │    │
 │   │   [Caps][A][S]...[L][Enter]   │    │
 │   │   [Shift][Z]...[M][Shift]     │    │
 │   │   [Ctrl][Win][Alt][Space]...  │    │
@@ -278,7 +310,7 @@ KeyboardHook(QObject)
 1. 用户从**动作面板**拖拽一个动作类型到键盘视图的键位上
 2. 弹出参数配置对话框（如程序路径、文本内容）
 3. 键位显示高亮 + 动作图标，表示已绑定
-4. 点击「保存」写入 `config/hotkeys.json`
+4. 点击「保存」写入 `%APPDATA%\LineDogPet\hotkeys.json`
 5. 已绑定的键位显示不同颜色/图标
 
 ---
@@ -290,8 +322,8 @@ KeyboardHook(QObject)
 | # | 任务 | 验证 |
 |---|------|------|
 | 1.1 | 拷贝 BongoCat 键盘素材到项目 `assets/png/keyboard/` | 文件存在且目录结构正确 |
-| 1.2 | 实现 `keyboard_hook.py`：Windows 全局热键注册/注销 | 单元测试通过，手动可捕获热键 |
-| 1.3 | 实现 `pet_keymapper.py`：配置加载、映射分发、10s 计时 | `config/hotkeys.json` 正确读取和执行 |
+| 1.2 | 实现 `keyboard_hook.py`：Windows `RegisterHotKey` 注册/注销 | 单元测试通过，手动可捕获已配置热键 |
+| 1.3 | 实现 `pet_keymapper.py`：配置加载、映射分发、10s 计时 | `%APPDATA%\LineDogPet\hotkeys.json` 正确读取和执行 |
 | 1.4 | 集成到打工模式入口/出口 | 进打工注册热键，退打工注销 |
 | 1.5 | 回归测试通过 + `py_compile` | `python -m unittest` 全绿 |
 
@@ -302,7 +334,7 @@ KeyboardHook(QObject)
 | 2.1 | 实现 `pet_keyboard_overlay.py`：QLabel 叠层渲染 | 键盘底图 + 按键高亮正常显示 |
 | 2.2 | 键盘缩放算法：随窗口等比缩放 | 不同 pet_size 下键盘比例正确 |
 | 2.3 | 透明度动画：渐显/渐隐 (QPropertyAnimation) | 视觉流畅无闪烁 |
-| 2.4 | 集成到打工模式：首次按键浮现 + 10s 自动淡出 | 手动交互验证全流程 |
+| 2.4 | 可选实现 `WH_KEYBOARD_LL`：真实按下/松开驱动高亮 | 按下高亮、松开取消；退出打工后钩子卸载 |
 | 2.5 | 菜单开关集成：「显示键盘」选项 | 开关后状态持久化 |
 
 ### Phase 3 — 配置界面 (预估 3-4 天)
@@ -312,7 +344,7 @@ KeyboardHook(QObject)
 | 3.1 | 键盘视图 Widget：绘制可交互键盘 | 键盘渲染准确 |
 | 3.2 | 拖拽绑定：动作→键位 | 可视化绑定功能正常 |
 | 3.3 | 参数对话框：每种动作类型对应参数 | 打开程序/模拟按键/输入文本 |
-| 3.4 | 配置持久化：写入/读取 `config/hotkeys.json` | 重启后映射不丢失 |
+| 3.4 | 配置持久化：写入/读取 `%APPDATA%\LineDogPet\hotkeys.json` | 重启后映射不丢失 |
 | 3.5 | 映射冲突检测 | 重复热键提示 |
 
 ### Phase 4 — 打磨 (预估 1-2 天)
@@ -330,11 +362,14 @@ KeyboardHook(QObject)
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| RegisterHotKey 键位冲突 | 热键无法注册 | 注册失败 Fallback 提示用户换键 |
+| RegisterHotKey 键位冲突 | 热键无法注册 | 注册失败时提示用户换键，并跳过该映射 |
+| RegisterHotKey 没有 key up | 无法精确知道松手时机 | Phase 1 使用自动释放模拟；需要精确释放时启用 `WH_KEYBOARD_LL` |
+| SendInput 自触发 | 模拟按键再次触发映射 | 执行动作期间短暂设置 suppress 标记 |
 | 大量 PNG 素材增加打包体积 | ~1MB | 可接受，PNG 本身已优化 |
 | 键盘素材与小狗风格不匹配 | 画风割裂 | 后期可替换键盘素材（pixel-art 备选） |
 | 拖拽配置 UI 复杂 | 开发周期长 | 可降级为列表式配置（Phase 3 fallback） |
-| 鼠标检测 (Live2D) | 暂时不可行 | Phase 3/4 待开发，留意 Live2D SDK 进展 |
+| 功能键没有独立素材 | `F1`-`F12` 无法逐个高亮 | 统一回退到 `Fn`，或后续补素材 |
+| 鼠标检测 (Live2D) | 暂时不可行 | 当前 PySide6 GIF 方案不做 Live2D 鼠标参数 |
 
 ---
 
@@ -343,12 +378,12 @@ KeyboardHook(QObject)
 - [ ] 打工模式下全局热键生效，非聚焦也能触发
 - [ ] 退出打工后热键自动注销
 - [ ] 键盘按下热键后浮现，对应键位高亮
-- [ ] 松手后 10s 无新按键则渐变淡出
-- [ ] 有持续按键时计时器重置
+- [ ] Phase 1 下热键触发后可自动释放视觉高亮，并在 10s 无新触发后渐变淡出
+- [ ] 启用低级键盘钩子后，松手和持续按键状态可真实驱动计时器
 - [ ] 右键菜单「显示键盘」开关正常工作
 - [ ] 窗口尺寸变化时键盘等比缩放
 - [ ] 小狗 keypress 动画正确播放/停止
-- [ ] 映射配置持久化到 `config/hotkeys.json`
+- [ ] 映射配置持久化到 `%APPDATA%\LineDogPet\hotkeys.json`
 - [ ] 可视化配置界面可添加/修改/删除映射
 - [ ] 单元测试覆盖核心逻辑
 - [ ] `QT_QPA_PLATFORM=offscreen` 测试全通过
