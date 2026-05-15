@@ -45,6 +45,11 @@ class ConfigPathTests(unittest.TestCase):
         self.assertEqual(config.WINDOW_SIZE, 180)
         self.assertEqual(config.SIZE_PRESETS["中"], 180)
 
+    def test_work_mode_size_is_135px(self):
+        import config
+
+        self.assertEqual(config.WORK_MODE_SIZE, 135)
+
 
 class BuildConfigTests(unittest.TestCase):
     def test_local_build_script_does_not_install_dependencies(self):
@@ -259,6 +264,73 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertFalse(window.stats.work_mode)
         self.assertFalse(window.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
 
+    def test_entering_work_mode_cancels_pending_interaction_animation(self):
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        stale_interaction_id = 10
+        window.stats.work_mode = False
+        window._interaction_in_progress = True
+        window._interaction_id = stale_interaction_id
+        window._state = "greet"
+
+        window._toggle_work()
+
+        self.assertTrue(window.stats.work_mode)
+        self.assertFalse(window._interaction_in_progress)
+        self.assertEqual(window._state, "work")
+
+        window._end_interaction(stale_interaction_id)
+        window._force_end_interaction(stale_interaction_id)
+
+        self.assertEqual(window._state, "work")
+
+    def test_work_mode_ignores_hover_greet_animation(self):
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.work_mode = False
+        window._toggle_work()
+        window._interaction_in_progress = False
+        window._state = "work"
+
+        window._do_hover_greet()
+
+        self.assertEqual(window._state, "work")
+
+    def test_quit_plays_bye_animation_before_saving_and_exiting(self):
+        import pet_window
+        from pet_window import PetWindow
+
+        saved = []
+        quit_calls = []
+        scheduled = []
+        window = PetWindow()
+        self.addCleanup(window.close)
+        original_save = window.stats.save
+        original_single_shot = window._schedule_single_shot
+        original_quit = pet_window.QApplication.quit
+        window.stats.save = lambda: saved.append("save")
+        window._schedule_single_shot = lambda ms, callback: scheduled.append((ms, callback))
+        pet_window.QApplication.quit = lambda: quit_calls.append("quit")
+        self.addCleanup(lambda: setattr(window.stats, "save", original_save))
+        self.addCleanup(lambda: setattr(window, "_schedule_single_shot", original_single_shot))
+        self.addCleanup(lambda: setattr(pet_window.QApplication, "quit", original_quit))
+
+        window._quit()
+
+        self.assertEqual(window._state, "bye")
+        self.assertEqual(saved, [])
+        self.assertEqual(quit_calls, [])
+        self.assertIn(5_000, [ms for ms, _callback in scheduled])
+
+        scheduled[-1][1]()
+
+        self.assertEqual(saved, ["save"])
+        self.assertEqual(quit_calls, ["quit"])
+
     def test_tray_show_reapplies_enabled_topmost_mode(self):
         from PySide6.QtCore import Qt
         from pet_window import PetWindow
@@ -280,6 +352,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         scheduled = []
         window = PetWindow()
         self.addCleanup(window.close)
+        window.stats.work_mode = False
         window._interaction_in_progress = False
         original_single_shot = window._schedule_single_shot
         window._schedule_single_shot = lambda ms, callback: scheduled.append(ms)

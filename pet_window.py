@@ -138,6 +138,8 @@ class PetWindow(QMainWindow):
     # ===== 动画 =====
     def _play(self, category: str, once: bool = False):
         """播放指定分类的 GIF"""
+        if self.stats.work_mode and category != "work":
+            return
         if self._interaction_in_progress:
             return  # 互动中不被打断
 
@@ -155,7 +157,7 @@ class PetWindow(QMainWindow):
 
     def _play_walk(self, dx: int, dy: int):
         """播放走路/跳跃动画"""
-        if self._interaction_in_progress:
+        if self.stats.work_mode or self._interaction_in_progress:
             return
         if dy < 0:  # 向上走
             movie = self.anim.get_walk(0)  # jump
@@ -207,7 +209,7 @@ class PetWindow(QMainWindow):
 
     def _play_once(self, category: str):
         """播放一次非循环动画，然后回到 idle"""
-        if self._interaction_in_progress:
+        if self.stats.work_mode or self._interaction_in_progress:
             return False
         movie = self.anim.get_random(category)
         if not movie:
@@ -327,6 +329,55 @@ class PetWindow(QMainWindow):
         if self._interaction_in_progress and self._interaction_id == interaction_id:
             self._interaction_in_progress = False
             self._play("idle")
+
+    def _play_bye_before_quit(self):
+        movie = self.anim.get_random("bye")
+        if not movie:
+            return False
+        self._quitting = True
+        self._quit_in_progress = True
+        self._hover_timer.stop()
+        self._interaction_id += 1
+        self._interaction_in_progress = False
+        self._mood_id += 1
+        self._mood_until = 0
+
+        self.label.setMovie(movie)
+        movie.setScaledSize(self.label.size())
+        self._state = "bye"
+        self._last_state_change = time.time()
+        self._quit_animation_id = getattr(self, "_quit_animation_id", 0) + 1
+        quit_id = self._quit_animation_id
+        self._disconnect_movie_signals(movie)
+        movie.frameChanged.connect(
+            lambda frame, m=movie, qid=quit_id: self._end_bye_movie(m, frame, qid)
+        )
+        movie.finished.connect(lambda qid=quit_id: self._finish_quit(qid))
+        movie.start()
+        self._schedule_single_shot(
+            INTERACTION_TIMEOUT_MS,
+            lambda qid=quit_id: self._finish_quit(qid),
+        )
+        return True
+
+    def _end_bye_movie(self, movie, frame, quit_id):
+        if getattr(self, "_quit_animation_id", None) != quit_id:
+            return
+        frame_count = movie.frameCount()
+        if frame_count > 0 and frame >= frame_count - 1:
+            movie.stop()
+            QTimer.singleShot(0, lambda: self._finish_quit(quit_id))
+
+    def _finish_quit(self, quit_id=None):
+        if quit_id is not None and getattr(self, "_quit_animation_id", None) != quit_id:
+            return
+        if getattr(self, "_quit_finished", False):
+            return
+        self._quit_finished = True
+        self._quitting = True
+        self._sync_position_for_save()
+        self.stats.save()
+        QApplication.quit()
 
     def _random_walk(self):
         """随机走动一段距离"""
@@ -518,6 +569,7 @@ class PetWindow(QMainWindow):
             self._enter_work()
 
     def _enter_work(self):
+        self._cancel_transient_animations_for_work()
         self._work_prev_size = self.stats.pet_size  # 记住用户尺寸
         self._set_size(WORK_MODE_SIZE)
         self.stats.pet_size = self._work_prev_size   # 保留用户尺寸，不被工作模式覆盖
@@ -532,6 +584,14 @@ class PetWindow(QMainWindow):
         # 先 show 再设动画
         if self.anim.has_category("work"):
             self._play("work")
+
+    def _cancel_transient_animations_for_work(self):
+        self._hover_timer.stop()
+        if self._interaction_in_progress:
+            self._interaction_id += 1
+        self._interaction_in_progress = False
+        self._mood_id += 1
+        self._mood_until = 0
 
     def _exit_work(self):
         self._set_size(self.stats.pet_size)
@@ -633,7 +693,8 @@ class PetWindow(QMainWindow):
         event.accept()
 
     def _quit(self):
-        self._quitting = True
-        self._sync_position_for_save()
-        self.stats.save()
-        QApplication.quit()
+        if getattr(self, "_quit_in_progress", False):
+            return
+        if self.anim.has_category("bye") and self._play_bye_before_quit():
+            return
+        self._finish_quit()
