@@ -12,6 +12,10 @@
 - `config.py`：资源路径、数据路径和全局常量。
 - `test_regressions.py`：回归测试。
 
+文档约定：
+- `docs/CODE_MAP.md` 是代码导航地图，新增文件或重大功能变更时必须同步更新。
+- 小修小改（改一行、修 typo）不需要更新 CODE_MAP，行号偏几行不影响导航。
+
 ## 常用命令
 
 ```powershell
