@@ -417,6 +417,29 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         self.assertEqual(window._state, "eat")
 
+    def test_hungry_status_animation_does_not_block_feed(self):
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.hunger = 20
+        window.stats.cleanliness = 100
+        window.stats.affection = 50
+        window.stats.work_mode = False
+        window.stats._last_action["feed"] = None
+        window._state = "idle"
+        window._interaction_in_progress = False
+
+        window._tick()
+
+        self.assertEqual(window._state, "hungry")
+        self.assertFalse(window._interaction_in_progress)
+
+        window._do_feed()
+
+        self.assertGreater(window.stats.hunger, 20)
+        self.assertIsNotNone(window.stats._last_action["feed"])
+
     def test_startup_greet_plays_greet_category(self):
         from pet_window import PetWindow
 

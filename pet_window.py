@@ -175,6 +175,10 @@ class PetWindow(QMainWindow):
             self._last_state_change = time.time()
 
     # ===== 主循环 =====
+    def _play_status(self, category: str):
+        if self._state != category:
+            self._play(category)
+
     def _tick(self):
         """100ms 一次"""
         self.stats.tick(HUNGER_DECAY, CLEAN_DECAY, AFFECTION_DECAY)
@@ -191,9 +195,9 @@ class PetWindow(QMainWindow):
 
         # 状态触发（高优先级）
         if self.stats.is_hungry and self.anim.has_category("hungry"):
-            self._play_once("hungry"); return
+            self._play_status("hungry"); return
         if self.stats.is_dirty and self.anim.has_category("dirty"):
-            self._play_once("dirty"); return
+            self._play_status("dirty"); return
 
         # 空闲分层
         if idle_time >= IDLE_SLEEP_MIN and random.random() < 0.001:
