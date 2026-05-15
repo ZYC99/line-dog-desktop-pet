@@ -59,16 +59,20 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn(".venv\\Scripts\\python.exe", content)
         self.assertIn("-m PyInstaller", content)
 
-    def test_local_build_script_does_not_reference_missing_icon(self):
+    def test_local_build_script_uses_project_icon(self):
         content = (ROOT / "build.bat").read_text(encoding="utf-8")
+        icon = ROOT / "assets" / "icon.ico"
 
-        self.assertNotIn("--icon", content)
+        self.assertTrue(icon.is_file())
+        self.assertEqual(icon.read_bytes()[:4], b"\x00\x00\x01\x00")
+        self.assertIn('--icon "assets\\icon.ico"', content)
 
     def test_release_workflow_installs_requirements_and_builds_release(self):
         content = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
         self.assertIn("pip install -r requirements.txt", content)
         self.assertIn("python -m PyInstaller", content)
+        self.assertIn('--icon "assets\\icon.ico"', content)
         self.assertIn("softprops/action-gh-release", content)
 
 

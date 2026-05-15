@@ -19,6 +19,7 @@ if errorlevel 1 (
 
 "%PYTHON%" -m PyInstaller --onefile --noconsole ^
     --name "LineDogPet" ^
+    --icon "assets\icon.ico" ^
     --add-data "assets;assets" ^
     main.py
 
