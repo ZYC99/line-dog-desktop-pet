@@ -259,6 +259,21 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertFalse(window.stats.work_mode)
         self.assertFalse(window.testAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents))
 
+    def test_tray_show_reapplies_enabled_topmost_mode(self):
+        from PySide6.QtCore import Qt
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.topmost = True
+        window.hide()
+        flags = window.windowFlags()
+        window.setWindowFlags(flags & ~Qt.WindowType.WindowStaysOnTopHint)
+
+        window._toggle_visible()
+
+        self.assertTrue(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+
     def test_interaction_uses_5_second_timeout(self):
         from pet_window import PetWindow
 

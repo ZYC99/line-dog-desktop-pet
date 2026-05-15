@@ -608,7 +608,7 @@ class PetWindow(QMainWindow):
         if self.isVisible():
             self.hide()
         else:
-            self.show()
+            self._apply_topmost()
 
     def _disable_click_through(self):
         self.stats.click_through = False
