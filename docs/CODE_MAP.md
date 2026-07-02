@@ -10,6 +10,7 @@
 | `pet_animation.py` | GIF 素材加载、分类管理、方向选择 |
 | `pet_menu.py` | 右键菜单 UI（属性条、按钮、滑块） |
 | `config.py` | 全局常量 |
+| `pet_startup.py` | Windows 当前用户开机自启注册表读写 |
 | `build.bat` | PyInstaller 打包 |
 | `.github/workflows/release.yml` | CI 自动构建 |
 
@@ -42,6 +43,13 @@
 - 属性进度条 → `pet_menu.py: _add_stat_bar` (L80-120)
 - 尺寸滑块 → `pet_menu.py: _add_size_control` (L122-172)
 - 菜单回调 → `pet_window.py: _show_menu` callbacks (L287-296)
+- 开机自启勾选 → `pet_menu.py: _build` / `pet_window.py: _toggle_startup` / `pet_startup.py`
+
+### 开机自启
+- 启动命令生成 → `pet_startup.py: build_startup_command`
+- 当前用户 Run 注册表读取 → `pet_startup.py: is_startup_enabled`
+- 当前用户 Run 注册表写入/删除 → `pet_startup.py: set_startup_enabled`
+- 菜单入口 → `pet_window.py: _show_menu` callbacks
 
 ### 互动操作
 - 喂食 → `pet_window.py: _do_feed` (L298-307)

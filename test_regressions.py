@@ -76,6 +76,86 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("softprops/action-gh-release", content)
 
 
+class StartupConfigTests(unittest.TestCase):
+    def test_builds_startup_command_for_frozen_and_dev_modes(self):
+        from pet_startup import build_startup_command
+
+        self.assertEqual(
+            build_startup_command(
+                executable=r"C:\Apps\LineDogPet.exe",
+                script_path=r"D:\repo\main.py",
+                frozen=True,
+            ),
+            r'"C:\Apps\LineDogPet.exe"',
+        )
+        self.assertEqual(
+            build_startup_command(
+                executable=r"C:\Python311\python.exe",
+                script_path=r"D:\repo\main.py",
+                frozen=False,
+            ),
+            r'"C:\Python311\python.exe" "D:\repo\main.py"',
+        )
+
+    def test_startup_registry_toggle_uses_current_user_run_key(self):
+        from config import STARTUP_KEY, STARTUP_NAME
+        from pet_startup import is_startup_enabled, set_startup_enabled
+
+        class FakeWinreg:
+            HKEY_CURRENT_USER = "HKCU"
+            KEY_READ = 1
+            KEY_SET_VALUE = 2
+            REG_SZ = 1
+
+            def __init__(self):
+                self.values = {}
+                self.opened = []
+
+            def OpenKey(self, root, path, reserved=0, access=0):
+                self.opened.append((root, path, access))
+                return self
+
+            def CreateKey(self, root, path):
+                self.opened.append((root, path, "create"))
+                return self
+
+            def QueryValueEx(self, key, name):
+                if name not in self.values:
+                    raise FileNotFoundError(name)
+                return self.values[name], self.REG_SZ
+
+            def SetValueEx(self, key, name, reserved, value_type, value):
+                self.values[name] = value
+
+            def DeleteValue(self, key, name):
+                if name not in self.values:
+                    raise FileNotFoundError(name)
+                del self.values[name]
+
+            def CloseKey(self, key):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+        registry = FakeWinreg()
+
+        self.assertFalse(is_startup_enabled(registry=registry))
+
+        set_startup_enabled(True, registry=registry, command="LineDogPet.exe")
+
+        self.assertTrue(is_startup_enabled(registry=registry))
+        self.assertEqual(registry.values[STARTUP_NAME], "LineDogPet.exe")
+        self.assertIn((registry.HKEY_CURRENT_USER, STARTUP_KEY, registry.KEY_SET_VALUE), registry.opened)
+
+        set_startup_enabled(False, registry=registry)
+
+        self.assertFalse(is_startup_enabled(registry=registry))
+
+
 class PetWindowBehaviorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -160,6 +240,59 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         self.assertEqual(slider.value(), 270)
         self.assertEqual(sizes[-1], 270)
+
+    def test_menu_shows_startup_toggle_state(self):
+        from pet_menu import PetMenu
+
+        class Stats:
+            hunger = 100
+            cleanliness = 100
+            affection = 50
+            work_mode = False
+            topmost = True
+            click_through = False
+            pet_size = 180
+
+            def can_do(self, action):
+                return True
+
+        menu = PetMenu(Stats(), {}, startup_enabled=True)
+        self.addCleanup(menu.close)
+
+        startup_actions = [
+            action for action in menu.actions()
+            if "开机自启" in action.text()
+        ]
+
+        self.assertEqual(len(startup_actions), 1)
+        self.assertTrue(startup_actions[0].isCheckable())
+        self.assertTrue(startup_actions[0].isChecked())
+
+    def test_window_toggles_startup_setting(self):
+        import pet_window
+        from pet_window import PetWindow
+
+        class FakeStartup:
+            enabled = False
+
+            def is_startup_enabled(self):
+                return self.enabled
+
+            def set_startup_enabled(self, enabled):
+                self.enabled = enabled
+                return True
+
+        fake_startup = FakeStartup()
+        original_startup = pet_window.pet_startup
+        pet_window.pet_startup = fake_startup
+        self.addCleanup(lambda: setattr(pet_window, "pet_startup", original_startup))
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+
+        window._toggle_startup()
+
+        self.assertTrue(fake_startup.enabled)
 
     def test_resizing_updates_current_movie_scaled_size(self):
         from PySide6.QtCore import QSize

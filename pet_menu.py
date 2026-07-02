@@ -3,10 +3,11 @@ from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 
 class PetMenu(QMenu):
-    def __init__(self, stats, callbacks: dict, parent=None):
+    def __init__(self, stats, callbacks: dict, parent=None, startup_enabled=False):
         super().__init__(parent)
         self.stats = stats
         self.cb = callbacks  # {action_name: callable}
+        self.startup_enabled = startup_enabled
         self.setStyleSheet("""
             QMenu {
                 background: #2b2b2b;
@@ -77,6 +78,7 @@ class PetMenu(QMenu):
         self._add_action(work_text, "toggle_work", True)
         self._add_check("📌 置顶显示", "toggle_topmost", self.stats.topmost)
         self._add_check("🖱 鼠标穿透", "toggle_click_through", self.stats.click_through)
+        self._add_check("开机自启", "toggle_startup", self.startup_enabled)
 
         self.addSeparator()
 

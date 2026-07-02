@@ -4,6 +4,7 @@ from PySide6.QtGui import QAction, QIcon, QPixmap, QMovie
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 
 from config import *
+import pet_startup
 from pet_animation import PetAnimation
 from pet_stats import PetStats
 from pet_menu import PetMenu
@@ -524,11 +525,17 @@ class PetWindow(QMainWindow):
             "toggle_work": self._toggle_work,
             "toggle_topmost": self._toggle_topmost,
             "toggle_click_through": self._toggle_click_through,
+            "toggle_startup": self._toggle_startup,
             "set_size": self._set_pet_size,
             "quit": self._quit,
         }
 
-        menu = PetMenu(self.stats, callbacks, self)
+        menu = PetMenu(
+            self.stats,
+            callbacks,
+            self,
+            startup_enabled=self._is_startup_enabled(),
+        )
         menu.exec(pos)
 
     def _do_feed(self):
@@ -614,6 +621,12 @@ class PetWindow(QMainWindow):
         self.stats.click_through = not self.stats.click_through
         self._apply_click_through()
         self._setup_tray_menu()
+
+    def _is_startup_enabled(self):
+        return pet_startup.is_startup_enabled()
+
+    def _toggle_startup(self):
+        pet_startup.set_startup_enabled(not self._is_startup_enabled())
 
     # ===== 系统托盘 =====
     def _setup_tray(self):
