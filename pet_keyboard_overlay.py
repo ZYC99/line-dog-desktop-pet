@@ -1,7 +1,7 @@
 import os
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPainter, QPixmap
 from PySide6.QtWidgets import QLabel, QWidget
 
 from config import KEYBOARD_ASPECT_HEIGHT, KEYBOARD_ASPECT_WIDTH, KEYBOARD_ASSETS_DIR
@@ -75,12 +75,72 @@ class PetKeyboardOverlay(QWidget):
         self._background_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._background_label.setScaledContents(True)
         self._background = QPixmap(os.path.join(KEYBOARD_ASSETS_DIR, "background.png"))
+        self._key_pixmaps = self._load_key_pixmaps()
+        self._pressed_assets = set()
         self.hide()
+
+    @property
+    def pressed_assets(self):
+        return set(self._pressed_assets)
 
     def set_keyboard_width(self, width):
         width = int(width)
         height = keyboard_height_for_width(width)
         self.setFixedSize(width, height)
         self._background_label.setFixedSize(width, height)
+        self._render()
+
+    def set_key_pressed(self, vk_code, scan_code, extended, pressed):
+        asset = key_asset_for_event(vk_code, scan_code, extended)
+        if asset is None:
+            return
+
+        changed = False
+        if pressed:
+            if asset not in self._pressed_assets:
+                self._pressed_assets.add(asset)
+                changed = True
+        elif asset in self._pressed_assets:
+            self._pressed_assets.discard(asset)
+            changed = True
+
+        if changed:
+            self._render()
+
+    def clear_pressed_keys(self):
+        if self._pressed_assets:
+            self._pressed_assets.clear()
+            self._render()
+
+    def _load_key_pixmaps(self):
+        pixmaps = {}
+        for subdirectory in ("left-keys", "right-keys"):
+            directory = os.path.join(KEYBOARD_ASSETS_DIR, subdirectory)
+            if not os.path.isdir(directory):
+                continue
+            for filename in os.listdir(directory):
+                if filename.lower().endswith(".png"):
+                    pixmaps[(subdirectory, filename)] = QPixmap(os.path.join(directory, filename))
+        return pixmaps
+
+    def _render(self):
+        canvas = QPixmap(KEYBOARD_ASPECT_WIDTH, KEYBOARD_ASPECT_HEIGHT)
+        canvas.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(canvas)
         if not self._background.isNull():
-            self._background_label.setPixmap(self._background)
+            painter.drawPixmap(0, 0, self._background)
+        for asset in sorted(self._pressed_assets):
+            pixmap = self._key_pixmaps.get(asset)
+            if pixmap is not None and not pixmap.isNull():
+                painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+
+        target_size = self._background_label.size()
+        if target_size.isValid() and not target_size.isEmpty():
+            canvas = canvas.scaled(
+                target_size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        self._background_label.setPixmap(canvas)

@@ -227,6 +227,44 @@ class KeyboardOverlayTests(unittest.TestCase):
 
         self.assertEqual(overlay.size(), QSize(204, 118))
 
+    def test_keyboard_overlay_tracks_and_renders_multiple_pressed_keys(self):
+        from PySide6.QtCore import QSize
+        from pet_keyboard_overlay import PetKeyboardOverlay
+
+        overlay = PetKeyboardOverlay()
+        self.addCleanup(overlay.close)
+        overlay.set_keyboard_width(204)
+
+        overlay.set_key_pressed(0x41, 0, False, True)
+        pixmap = overlay._background_label.pixmap()
+        self.assertIsNotNone(pixmap)
+        self.assertFalse(pixmap.isNull())
+
+        overlay.set_key_pressed(0x10, 0x2A, False, True)
+        self.assertEqual(
+            overlay.pressed_assets,
+            {("left-keys", "KeyA.png"), ("left-keys", "ShiftLeft.png")},
+        )
+        pixmap = overlay._background_label.pixmap()
+        self.assertIsNotNone(pixmap)
+        self.assertFalse(pixmap.isNull())
+
+        overlay.set_key_pressed(0x41, 0, False, True)
+        self.assertEqual(len(overlay.pressed_assets), 2)
+
+        overlay.set_key_pressed(0x41, 0, False, False)
+        self.assertEqual(overlay.pressed_assets, {("left-keys", "ShiftLeft.png")})
+        pixmap = overlay._background_label.pixmap()
+        self.assertIsNotNone(pixmap)
+        self.assertFalse(pixmap.isNull())
+
+        overlay.clear_pressed_keys()
+        self.assertEqual(overlay.pressed_assets, set())
+        pixmap = overlay._background_label.pixmap()
+        self.assertIsNotNone(pixmap)
+        self.assertFalse(pixmap.isNull())
+        self.assertEqual(overlay.size(), QSize(204, 118))
+
 
 class KeyboardMappingTests(unittest.TestCase):
     def test_maps_letters_and_main_keyboard_digits(self):
