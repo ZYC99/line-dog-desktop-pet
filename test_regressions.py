@@ -509,10 +509,33 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         cls.app = QApplication.instance() or QApplication([])
 
+    def _make_window(self, **kwargs):
+        from pet_stats import PetStats
+        from pet_window import PetWindow
+
+        data_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(data_dir.cleanup)
+        data_file = os.path.join(data_dir.name, "pet_data.json")
+        kwargs.setdefault("stats", PetStats(data_file=data_file, data_dir=data_dir.name))
+        window = PetWindow(**kwargs)
+        self.addCleanup(window.close)
+        return window
+
+    def test_window_accepts_injected_stats_for_test_data_isolation(self):
+        from pet_stats import PetStats
+        from pet_window import PetWindow
+
+        with tempfile.TemporaryDirectory() as data_dir:
+            data_file = os.path.join(data_dir, "pet_data.json")
+            stats = PetStats(data_file=data_file, data_dir=data_dir)
+            window = PetWindow(stats=stats)
+            window.close()
+
+            self.assertTrue(os.path.exists(data_file))
     def test_stale_interaction_end_does_not_clear_current_interaction(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window._interaction_in_progress = True
         window._interaction_id = 2
@@ -524,7 +547,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_tray_menu_can_disable_click_through_and_work_mode(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.click_through = True
         window.stats.work_mode = True
@@ -542,7 +565,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_enabling_click_through_refreshes_tray_recovery_action(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.click_through = False
         window._setup_tray_menu()
@@ -661,7 +684,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         pet_window.pet_startup = fake_startup
         self.addCleanup(lambda: setattr(pet_window, "pet_startup", original_startup))
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
 
         window._toggle_startup()
@@ -673,7 +696,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_keyboard_overlay import keyboard_height_for_width
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.stats.keyboard_visible = True
@@ -692,7 +715,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_keyboard_toggle_persists_preference(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.keyboard_visible = False
 
@@ -703,7 +726,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_keyboard_visibility_switches_between_typing_dog_and_work_movie(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.stats.keyboard_visible = True
@@ -726,7 +749,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         pet_window.TYPING_DOG_IMAGE = str(ROOT / "assets" / "generated" / "missing.png")
         self.addCleanup(lambda: setattr(pet_window, "TYPING_DOG_IMAGE", original_image))
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.stats.keyboard_visible = True
@@ -762,7 +785,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
                     self.running = False
 
         fake = FakeKeyboardHook()
-        window = PetWindow(keyboard_hook=fake)
+        window = self._make_window(keyboard_hook=fake)
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.stats.keyboard_visible = True
@@ -809,7 +832,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertEqual(fake.stop_count, 3)
 
         finish_fake = FakeKeyboardHook()
-        finish_window = PetWindow(keyboard_hook=finish_fake)
+        finish_window = self._make_window(keyboard_hook=finish_fake)
         self.addCleanup(finish_window.close)
         finish_window.stats.work_mode = False
         finish_window.stats.keyboard_visible = True
@@ -829,7 +852,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from PySide6.QtCore import QSize
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         movie = window.label.movie()
         self.assertIsNotNone(movie)
@@ -844,7 +867,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         screen = QApplication.primaryScreen().availableGeometry()
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.move(screen.width() - 10, screen.height() - 10)
 
@@ -859,7 +882,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from PySide6.QtCore import Qt
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.stats.topmost = False
@@ -884,7 +907,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_work_mode_does_not_overwrite_normal_saved_position(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window.move(123, 234)
@@ -900,7 +923,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from PySide6.QtGui import QMovie
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         idle_movie = window.anim._movies["idle"][0]
         window.label.setMovie(idle_movie)
@@ -916,7 +939,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from PySide6.QtCore import Qt
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window._toggle_work()
@@ -935,7 +958,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_entering_work_mode_cancels_pending_interaction_animation(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         stale_interaction_id = 10
         window.stats.work_mode = False
@@ -957,7 +980,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_work_mode_ignores_hover_greet_animation(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window._toggle_work()
@@ -975,7 +998,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         saved = []
         quit_calls = []
         scheduled = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         original_save = window.stats.save
         original_single_shot = window._schedule_single_shot
@@ -1003,7 +1026,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from PySide6.QtCore import Qt
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.topmost = True
         window.hide()
@@ -1018,7 +1041,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         scheduled = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = False
         window._interaction_in_progress = False
@@ -1042,7 +1065,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
             def stop(self):
                 self.stopped = True
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window._interaction_in_progress = True
         window._interaction_id = 10
@@ -1058,7 +1081,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_interaction_blocks_idle_and_walk_until_finished(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window._interaction_in_progress = True
         window._state = "greet"
@@ -1071,7 +1094,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_interaction_blocks_hover_and_direct_once_animation(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window._interaction_in_progress = True
         window._state = "eat"
@@ -1084,7 +1107,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
     def test_hungry_status_animation_does_not_block_feed(self):
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.hunger = 20
         window.stats.cleanliness = 100
@@ -1108,7 +1131,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         played = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         original_play_once = window._play_once
         window._play_once = lambda category: played.append(category)
@@ -1122,7 +1145,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from config import MOOD_LONG_CHECK_MS
         from pet_window import PetWindow
 
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.affection = 95
         window._run_mood_cycle()
@@ -1136,7 +1159,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         played = []
         scheduled = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.affection = 95
         window._interaction_in_progress = False
@@ -1164,7 +1187,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         played = []
         scheduled = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.affection = 85
         window._interaction_in_progress = False
@@ -1188,7 +1211,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         played = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.affection = 70
         window._interaction_in_progress = False
@@ -1207,7 +1230,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         played = []
         scheduled = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.affection = 40
         window._interaction_in_progress = False
@@ -1232,7 +1255,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         played = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.hunger = 80
         window.stats.cleanliness = 80
@@ -1255,7 +1278,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         calls = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.hunger = 80
         window.stats.cleanliness = 80
@@ -1279,7 +1302,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         calls = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.hunger = 80
         window.stats.cleanliness = 80
@@ -1302,7 +1325,7 @@ class PetWindowBehaviorTests(unittest.TestCase):
         from pet_window import PetWindow
 
         calls = []
-        window = PetWindow()
+        window = self._make_window()
         self.addCleanup(window.close)
         window.stats.work_mode = True
         window.stats.hunger = 80

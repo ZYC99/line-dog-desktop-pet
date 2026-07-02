@@ -12,7 +12,7 @@ from pet_keyboard_overlay import PetKeyboardOverlay, keyboard_height_for_width
 from keyboard_hook import KeyboardHook
 
 class PetWindow(QMainWindow):
-    def __init__(self, keyboard_hook=None):
+    def __init__(self, keyboard_hook=None, stats=None):
         super().__init__()
         # 无边框透明窗
         self.setWindowFlags(
@@ -27,7 +27,7 @@ class PetWindow(QMainWindow):
 
         # 组件
         self.anim = PetAnimation()
-        self.stats = PetStats()
+        self.stats = stats if stats is not None else PetStats()
 
         # GIF 显示标签
         self._content = QWidget(self)
