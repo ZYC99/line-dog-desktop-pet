@@ -99,7 +99,12 @@ class ConfigPathTests(unittest.TestCase):
 
         self.assertEqual(
             module.TYPING_DOG_IMAGE,
-            os.path.join(bundle_dir, "assets", "generated", "typing_dog_halfbody_left45.png"),
+            os.path.join(
+                bundle_dir,
+                "assets",
+                "generated",
+                "typing_dog_halfbody_left45.png",
+            ),
         )
 
 
@@ -692,7 +697,14 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertTrue(fake_startup.enabled)
 
     def test_work_mode_keyboard_overlay_extends_window_height(self):
-        from config import KEYBOARD_WORK_MODE_PET_SIZE, KEYBOARD_WORK_MODE_WIDTH
+        from config import (
+            KEYBOARD_WORK_MODE_DOG_X,
+            KEYBOARD_WORK_MODE_DOG_Y,
+            KEYBOARD_WORK_MODE_KEYBOARD_X,
+            KEYBOARD_WORK_MODE_KEYBOARD_Y,
+            KEYBOARD_WORK_MODE_PET_SIZE,
+            KEYBOARD_WORK_MODE_WIDTH,
+        )
         from pet_keyboard_overlay import keyboard_height_for_width
         from pet_window import PetWindow
 
@@ -704,13 +716,17 @@ class PetWindowBehaviorTests(unittest.TestCase):
         window._toggle_work()
 
         self.assertTrue(window.keyboard_overlay.isVisible())
+        self.assertEqual(window.label.x(), KEYBOARD_WORK_MODE_DOG_X)
+        self.assertEqual(window.label.y(), KEYBOARD_WORK_MODE_DOG_Y)
+        self.assertEqual(window.keyboard_overlay.x(), KEYBOARD_WORK_MODE_KEYBOARD_X)
+        self.assertEqual(window.keyboard_overlay.y(), KEYBOARD_WORK_MODE_KEYBOARD_Y)
         self.assertEqual(window.width(), KEYBOARD_WORK_MODE_WIDTH)
         self.assertEqual(
             window.height(),
             KEYBOARD_WORK_MODE_PET_SIZE + keyboard_height_for_width(KEYBOARD_WORK_MODE_WIDTH),
         )
         self.assertEqual(window.label.width(), KEYBOARD_WORK_MODE_PET_SIZE)
-        self.assertEqual(window.label.x(), (KEYBOARD_WORK_MODE_WIDTH - KEYBOARD_WORK_MODE_PET_SIZE) // 2)
+        self.assertEqual(window.label.height(), KEYBOARD_WORK_MODE_PET_SIZE)
 
     def test_keyboard_toggle_persists_preference(self):
         from pet_window import PetWindow
@@ -758,6 +774,12 @@ class PetWindowBehaviorTests(unittest.TestCase):
 
         self.assertIsNotNone(window.label.movie())
         self.assertEqual(window._state, "work")
+
+    def test_typing_dog_image_has_transparent_background(self):
+        from PySide6.QtGui import QPixmap
+        from config import TYPING_DOG_IMAGE
+
+        self.assertTrue(QPixmap(TYPING_DOG_IMAGE).hasAlphaChannel())
 
     def test_keyboard_hook_lifecycle_follows_work_keyboard_visibility(self):
         import pet_window

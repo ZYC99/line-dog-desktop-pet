@@ -71,9 +71,13 @@ def keyboard_height_for_width(width):
 class PetKeyboardOverlay(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAutoFillBackground(False)
         self._background_label = QLabel(self)
         self._background_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._background_label.setScaledContents(True)
+        self._background_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._background_label.setAutoFillBackground(False)
         self._background = QPixmap(os.path.join(KEYBOARD_ASSETS_DIR, "background.png"))
         self._key_pixmaps = self._load_key_pixmaps()
         self._pressed_assets = set()

@@ -1,5 +1,5 @@
 import sys, os, random, time, warnings
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QSystemTrayIcon, QMenu as QSysMenu, QWidget, QVBoxLayout
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QSystemTrayIcon, QMenu as QSysMenu, QWidget
 from PySide6.QtGui import QAction, QIcon, QPixmap, QMovie
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 
@@ -31,14 +31,13 @@ class PetWindow(QMainWindow):
 
         # GIF 显示标签
         self._content = QWidget(self)
-        self._content_layout = QVBoxLayout(self._content)
-        self._content_layout.setContentsMargins(0, 0, 0, 0)
-        self._content_layout.setSpacing(0)
+        self._content.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._content.setAutoFillBackground(False)
+        self.keyboard_overlay = PetKeyboardOverlay(self._content)
         self.label = QLabel(self._content)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.keyboard_overlay = PetKeyboardOverlay(self._content)
-        self._content_layout.addWidget(self.label, 0, Qt.AlignmentFlag.AlignHCenter)
-        self._content_layout.addWidget(self.keyboard_overlay, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.label.setAutoFillBackground(False)
         self.setCentralWidget(self._content)
         self.keyboard_hook = keyboard_hook if keyboard_hook is not None else KeyboardHook(parent=self)
         self.keyboard_hook.key_event.connect(self.keyboard_overlay.set_key_pressed)
@@ -100,11 +99,10 @@ class PetWindow(QMainWindow):
         total_height = size + self._keyboard_height(keyboard_width)
         self.setFixedSize(total_width, total_height)
         self._content.setFixedSize(total_width, total_height)
-        self.label.setFixedSize(size, size)
+        self.stats.pet_size = size
         self.keyboard_overlay.set_keyboard_width(keyboard_width)
         self._apply_keyboard_overlay()
-        self._content_layout.activate()
-        self.stats.pet_size = size
+        self._layout_work_mode_widgets()
         self._sync_current_movie_size()
 
     def _keyboard_width(self, size):
@@ -120,6 +118,26 @@ class PetWindow(QMainWindow):
 
     def _apply_keyboard_overlay(self):
         self.keyboard_overlay.setVisible(self._keyboard_should_show())
+
+    def _layout_work_mode_widgets(self):
+        if self._keyboard_should_show():
+            self.label.setGeometry(
+                KEYBOARD_WORK_MODE_DOG_X,
+                KEYBOARD_WORK_MODE_DOG_Y,
+                KEYBOARD_WORK_MODE_PET_SIZE,
+                KEYBOARD_WORK_MODE_PET_SIZE,
+            )
+            self.keyboard_overlay.setGeometry(
+                KEYBOARD_WORK_MODE_KEYBOARD_X,
+                KEYBOARD_WORK_MODE_KEYBOARD_Y,
+                KEYBOARD_WORK_MODE_WIDTH,
+                keyboard_height_for_width(KEYBOARD_WORK_MODE_WIDTH),
+            )
+            self.label.raise_()
+            self.keyboard_overlay.raise_()
+        else:
+            self.label.setGeometry(0, 0, self.stats.pet_size, self.stats.pet_size)
+            self.keyboard_overlay.setGeometry(0, self.stats.pet_size, 0, 0)
 
     def _show_typing_dog(self):
         pixmap = QPixmap(TYPING_DOG_IMAGE)
@@ -143,6 +161,7 @@ class PetWindow(QMainWindow):
         self.keyboard_overlay.setVisible(active)
         if active and self._show_typing_dog():
             self.keyboard_hook.start()
+            self._layout_work_mode_widgets()
             return
         self._stop_keyboard_follow()
         if self.stats.work_mode and self.anim.has_category("work"):
