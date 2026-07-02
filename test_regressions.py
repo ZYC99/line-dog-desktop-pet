@@ -734,6 +734,95 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertIsNotNone(window.label.movie())
         self.assertEqual(window._state, "work")
 
+    def test_keyboard_hook_lifecycle_follows_work_keyboard_visibility(self):
+        import pet_window
+        from PySide6.QtCore import QObject, Signal
+        from pet_window import PetWindow
+
+        class FakeKeyboardHook(QObject):
+            key_event = Signal(int, int, bool, bool)
+
+            def __init__(self):
+                super().__init__()
+                self.start_count = 0
+                self.stop_count = 0
+                self.running = False
+
+            def start(self):
+                if not self.running:
+                    self.start_count += 1
+                    self.running = True
+                return True
+
+            def stop(self):
+                if self.running:
+                    self.stop_count += 1
+                    self.running = False
+
+        fake = FakeKeyboardHook()
+        window = PetWindow(keyboard_hook=fake)
+        self.addCleanup(window.close)
+        window.stats.work_mode = False
+        window.stats.keyboard_visible = True
+
+        window._toggle_work()
+
+        self.assertEqual(fake.start_count, 1)
+        self.assertTrue(fake.running)
+
+        fake.key_event.emit(0x41, 0x1E, False, True)
+        self.app.processEvents()
+
+        self.assertIn(("left-keys", "KeyA.png"), window.keyboard_overlay.pressed_assets)
+
+        window._toggle_keyboard()
+
+        self.assertEqual(fake.stop_count, 1)
+        self.assertFalse(fake.running)
+        self.assertEqual(window.keyboard_overlay.pressed_assets, set())
+        self.assertIsNotNone(window.label.movie())
+        self.assertEqual(window._state, "work")
+
+        window._toggle_keyboard()
+
+        self.assertEqual(fake.start_count, 2)
+        self.assertTrue(fake.running)
+
+        fake.key_event.emit(0x41, 0x1E, False, True)
+        self.app.processEvents()
+
+        window._toggle_work()
+
+        self.assertEqual(fake.stop_count, 2)
+        self.assertFalse(fake.running)
+        self.assertEqual(window.keyboard_overlay.pressed_assets, set())
+
+        window._toggle_work()
+        self.assertEqual(fake.start_count, 3)
+
+        window.close()
+
+        self.assertEqual(fake.stop_count, 3)
+        window.close()
+        self.assertEqual(fake.stop_count, 3)
+
+        finish_fake = FakeKeyboardHook()
+        finish_window = PetWindow(keyboard_hook=finish_fake)
+        self.addCleanup(finish_window.close)
+        finish_window.stats.work_mode = False
+        finish_window.stats.keyboard_visible = True
+        finish_window._toggle_work()
+        original_quit = pet_window.QApplication.quit
+        pet_window.QApplication.quit = lambda: None
+        self.addCleanup(lambda: setattr(pet_window.QApplication, "quit", original_quit))
+
+        finish_window._finish_quit()
+        finish_window._finish_quit()
+
+        self.assertEqual(finish_fake.stop_count, 1)
+        self.assertFalse(finish_fake.running)
+        self.assertEqual(finish_window.keyboard_overlay.pressed_assets, set())
+
     def test_resizing_updates_current_movie_scaled_size(self):
         from PySide6.QtCore import QSize
         from pet_window import PetWindow

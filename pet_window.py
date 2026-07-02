@@ -9,9 +9,10 @@ from pet_animation import PetAnimation
 from pet_stats import PetStats
 from pet_menu import PetMenu
 from pet_keyboard_overlay import PetKeyboardOverlay, keyboard_height_for_width
+from keyboard_hook import KeyboardHook
 
 class PetWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, keyboard_hook=None):
         super().__init__()
         # 无边框透明窗
         self.setWindowFlags(
@@ -39,6 +40,8 @@ class PetWindow(QMainWindow):
         self._content_layout.addWidget(self.label, 0, Qt.AlignmentFlag.AlignHCenter)
         self._content_layout.addWidget(self.keyboard_overlay, 0, Qt.AlignmentFlag.AlignHCenter)
         self.setCentralWidget(self._content)
+        self.keyboard_hook = keyboard_hook if keyboard_hook is not None else KeyboardHook(parent=self)
+        self.keyboard_hook.key_event.connect(self.keyboard_overlay.set_key_pressed)
 
         # 状态
         self._state = "idle"
@@ -136,12 +139,19 @@ class PetWindow(QMainWindow):
         return True
 
     def _refresh_keyboard_follow(self):
-        if not self.stats.work_mode:
+        active = self._keyboard_should_show()
+        self.keyboard_overlay.setVisible(active)
+        if active and self._show_typing_dog():
+            self.keyboard_hook.start()
             return
-        if self.stats.keyboard_visible and self._show_typing_dog():
-            return
-        if self.anim.has_category("work"):
+        self._stop_keyboard_follow()
+        if self.stats.work_mode and self.anim.has_category("work"):
             self._play("work")
+
+    def _stop_keyboard_follow(self):
+        self.keyboard_hook.stop()
+        self.keyboard_overlay.clear_pressed_keys()
+        self.keyboard_overlay.hide()
 
     def _work_mode_pet_size(self):
         return KEYBOARD_WORK_MODE_PET_SIZE if self.stats.keyboard_visible else WORK_MODE_SIZE
@@ -437,6 +447,7 @@ class PetWindow(QMainWindow):
             return
         self._quit_finished = True
         self._quitting = True
+        self._stop_keyboard_follow()
         self._sync_position_for_save()
         self.stats.save()
         QApplication.quit()
@@ -664,6 +675,7 @@ class PetWindow(QMainWindow):
         self._mood_until = 0
 
     def _exit_work(self):
+        self._stop_keyboard_follow()
         self._set_size(self.stats.pet_size)
         self._apply_click_through()
         self._apply_topmost()
@@ -773,6 +785,7 @@ class PetWindow(QMainWindow):
             self.stats.y = self.y()
 
     def closeEvent(self, event):
+        self._stop_keyboard_follow()
         if not getattr(self, '_quitting', False):
             self._sync_position_for_save()
             self.stats.save()
