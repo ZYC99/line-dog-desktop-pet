@@ -5,12 +5,14 @@
 | 文件 | 职责 |
 |------|------|
 | `main.py` | 入口、单实例检测 |
-| `pet_window.py` | 主窗口：透明窗、状态机、动画调度、鼠标交互、菜单回调 |
+| `pet_window.py` | 主窗口：透明窗、状态机、动画调度、鼠标交互、菜单回调、键盘跟随生命周期 |
 | `pet_stats.py` | 属性系统：饱食/清洁/好感 + CD + JSON 持久化 |
 | `pet_animation.py` | GIF 素材加载、分类管理、方向选择 |
 | `pet_menu.py` | 右键菜单 UI（属性条、按钮、滑块） |
 | `config.py` | 全局常量 |
 | `pet_startup.py` | Windows 当前用户开机自启注册表读写 |
+| `keyboard_hook.py` | Windows 全局低级键盘 hook 服务，按键事件通过 Qt Signal 回主线程 |
+| `pet_keyboard_overlay.py` | BongoCat 键盘比例、虚拟键映射、多键高亮叠层合成和缩放渲染 |
 | `build.bat` | PyInstaller 打包 |
 | `.github/workflows/release.yml` | CI 自动构建 |
 
@@ -83,3 +85,14 @@
 ### 打包 & 发布
 - PyInstaller → `build.bat`
 - GitHub Actions → `.github/workflows/release.yml`
+
+### 键盘跟随
+- 全局键盘监听生命周期 → `keyboard_hook.py: KeyboardHook` / `WindowsLowLevelKeyboardBackend`
+- 虚拟键到素材映射 → `pet_keyboard_overlay.py: key_asset_for_event`
+- 多键高亮状态 → `pet_keyboard_overlay.py: PetKeyboardOverlay.set_key_pressed` / `clear_pressed_keys`
+- 键盘底图和按键图层渲染 → `pet_keyboard_overlay.py: PetKeyboardOverlay._render`
+- 打工模式启停入口 → `pet_window.py: _enter_work` / `_exit_work`
+- 键盘显示切换入口 → `pet_window.py: _toggle_keyboard` / `_refresh_keyboard_follow`
+- 静态打字小狗显示 → `pet_window.py: _show_typing_dog`
+- 退出和关闭清理 → `pet_window.py: closeEvent` / `_finish_quit` / `_stop_keyboard_follow`
+- 键盘素材 → `assets/png/keyboard/`

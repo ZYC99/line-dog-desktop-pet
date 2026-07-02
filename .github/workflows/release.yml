@@ -23,7 +23,7 @@ jobs:
         run: |
           $env:QT_QPA_PLATFORM='offscreen'
           python -m unittest test_regressions.py
-          python -m py_compile main.py config.py pet_stats.py pet_animation.py pet_menu.py pet_window.py pet_startup.py pet_keyboard_overlay.py test_regressions.py
+          python -m py_compile main.py config.py pet_stats.py pet_animation.py pet_menu.py pet_window.py pet_startup.py pet_keyboard_overlay.py keyboard_hook.py test_regressions.py
       - name: Build
         run: |
           python -m PyInstaller --onefile --noconsole --name LineDogPet --icon "assets\icon.ico" --add-data "assets;assets" main.py

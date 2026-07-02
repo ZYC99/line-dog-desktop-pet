@@ -103,7 +103,7 @@ class ConfigPathTests(unittest.TestCase):
         )
 
 
-class BuildConfigTests(unittest.TestCase):
+class ReleaseWorkflowTests(unittest.TestCase):
     def test_local_build_script_does_not_install_dependencies(self):
         content = (ROOT / "build.bat").read_text(encoding="utf-8")
 
@@ -126,6 +126,8 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("python -m PyInstaller", content)
         self.assertIn('--icon "assets\\icon.ico"', content)
         self.assertIn("pet_keyboard_overlay.py", content)
+        self.assertIn("keyboard_hook.py", content)
+        self.assertIn('--add-data "assets;assets"', content)
         self.assertIn("softprops/action-gh-release", content)
 
 
