@@ -228,6 +228,121 @@ class KeyboardOverlayTests(unittest.TestCase):
         self.assertEqual(overlay.size(), QSize(204, 118))
 
 
+class KeyboardMappingTests(unittest.TestCase):
+    def test_maps_letters_and_main_keyboard_digits(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        self.assertEqual(key_asset_for_event(0x41, 0, False), ("left-keys", "KeyA.png"))
+        self.assertEqual(key_asset_for_event(0x5A, 0, False), ("left-keys", "KeyZ.png"))
+        self.assertEqual(key_asset_for_event(0x30, 0, False), ("left-keys", "Num0.png"))
+        self.assertEqual(key_asset_for_event(0x39, 0, False), ("left-keys", "Num9.png"))
+
+    def test_maps_arrow_keys(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        expected = {
+            0x25: ("right-keys", "LeftArrow.png"),
+            0x26: ("right-keys", "UpArrow.png"),
+            0x27: ("right-keys", "RightArrow.png"),
+            0x28: ("right-keys", "DownArrow.png"),
+        }
+        for vk_code, asset in expected.items():
+            with self.subTest(vk_code=vk_code):
+                self.assertEqual(key_asset_for_event(vk_code, 0, True), asset)
+
+    def test_distinguishes_left_and_right_shift(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        self.assertEqual(key_asset_for_event(0x10, 0x2A, False), ("left-keys", "ShiftLeft.png"))
+        self.assertEqual(key_asset_for_event(0x10, 0x36, False), ("left-keys", "ShiftRight.png"))
+        self.assertEqual(key_asset_for_event(0x10, 0, False), ("left-keys", "Shift.png"))
+        self.assertEqual(key_asset_for_event(0xA0, 0x36, False), ("left-keys", "ShiftLeft.png"))
+        self.assertEqual(key_asset_for_event(0xA1, 0x2A, False), ("left-keys", "ShiftRight.png"))
+
+    def test_distinguishes_left_and_right_control(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        self.assertEqual(key_asset_for_event(0x11, 0, False), ("left-keys", "ControlLeft.png"))
+        self.assertEqual(key_asset_for_event(0x11, 0, True), ("left-keys", "ControlRight.png"))
+        self.assertEqual(key_asset_for_event(0xA2, 0, True), ("left-keys", "ControlLeft.png"))
+        self.assertEqual(key_asset_for_event(0xA3, 0, False), ("left-keys", "ControlRight.png"))
+
+    def test_distinguishes_left_and_right_alt(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        self.assertEqual(key_asset_for_event(0x12, 0, False), ("left-keys", "Alt.png"))
+        self.assertEqual(key_asset_for_event(0x12, 0, True), ("left-keys", "AltGr.png"))
+        self.assertEqual(key_asset_for_event(0xA4, 0, True), ("left-keys", "Alt.png"))
+        self.assertEqual(key_asset_for_event(0xA5, 0, False), ("left-keys", "AltGr.png"))
+
+    def test_maps_supported_special_keys(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        expected = {
+            0x08: "Backspace.png",
+            0x09: "Tab.png",
+            0x0D: "Return.png",
+            0x14: "CapsLock.png",
+            0x1B: "Escape.png",
+            0x20: "Space.png",
+            0x2E: "Delete.png",
+            0x5B: "Meta.png",
+            0x5C: "Meta.png",
+            0xBF: "Slash.png",
+            0xC0: "BackQuote.png",
+        }
+        for vk_code, filename in expected.items():
+            with self.subTest(vk_code=vk_code):
+                self.assertEqual(
+                    key_asset_for_event(vk_code, 0, False),
+                    ("left-keys", filename),
+                )
+
+    def test_does_not_map_function_or_unknown_keys(self):
+        from pet_keyboard_overlay import key_asset_for_event
+
+        self.assertIsNone(key_asset_for_event(0x70, 0, False))
+        self.assertIsNone(key_asset_for_event(0x7B, 0, False))
+        self.assertIsNone(key_asset_for_event(0xFF, 0, False))
+
+    def test_every_supported_mapping_uses_an_existing_asset(self):
+        from config import KEYBOARD_ASSETS_DIR
+        from pet_keyboard_overlay import key_asset_for_event
+
+        events = [(vk_code, 0, False) for vk_code in range(0x41, 0x5B)]
+        events += [(vk_code, 0, False) for vk_code in range(0x30, 0x3A)]
+        events += [(vk_code, 0, True) for vk_code in range(0x25, 0x29)]
+        events += [
+            (vk_code, 0, False)
+            for vk_code in (0x08, 0x09, 0x0D, 0x14, 0x1B, 0x20, 0x2E, 0x5B, 0x5C, 0xBF, 0xC0)
+        ]
+        events += [
+            (0x10, 0x2A, False),
+            (0x10, 0x36, False),
+            (0x10, 0, False),
+            (0xA0, 0x36, False),
+            (0xA1, 0x2A, False),
+            (0x11, 0, False),
+            (0x11, 0, True),
+            (0xA2, 0, True),
+            (0xA3, 0, False),
+            (0x12, 0, False),
+            (0x12, 0, True),
+            (0xA4, 0, True),
+            (0xA5, 0, False),
+        ]
+
+        for event in events:
+            with self.subTest(event=event):
+                asset = key_asset_for_event(*event)
+                self.assertIsNotNone(asset)
+                subdirectory, filename = asset
+                self.assertTrue(
+                    os.path.isfile(os.path.join(KEYBOARD_ASSETS_DIR, subdirectory, filename)),
+                    asset,
+                )
+
+
 class PetWindowBehaviorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
