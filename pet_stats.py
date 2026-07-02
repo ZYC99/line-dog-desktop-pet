@@ -17,6 +17,7 @@ class PetStats:
         self.y = 500
         self.topmost = True
         self.click_through = False
+        self.keyboard_visible = False
         self.work_mode = False
         self.pet_size = WINDOW_SIZE
         self._loaded_from_file = False
@@ -92,6 +93,7 @@ class PetStats:
             "y": self.y,
             "topmost": self.topmost,
             "click_through": self.click_through,
+            "keyboard_visible": self.keyboard_visible,
             "work_mode": self.work_mode,
             "pet_size": self.pet_size,
             "last_feed": self._last_action.get("feed"),
@@ -116,6 +118,7 @@ class PetStats:
             self.y = self._coerce_int(data.get("y"), 500, 0, 100000)
             self.topmost = self._coerce_bool(data.get("topmost"), True)
             self.click_through = self._coerce_bool(data.get("click_through"), False)
+            self.keyboard_visible = self._coerce_bool(data.get("keyboard_visible"), False)
             self.work_mode = self._coerce_bool(data.get("work_mode"), False)
             self.pet_size = self._coerce_int(data.get("pet_size"), WINDOW_SIZE, SIZE_MIN, SIZE_MAX)
             self._last_action["feed"] = self._coerce_timestamp(data.get("last_feed"))

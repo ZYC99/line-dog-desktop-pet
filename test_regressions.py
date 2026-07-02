@@ -50,6 +50,58 @@ class ConfigPathTests(unittest.TestCase):
 
         self.assertEqual(config.WORK_MODE_SIZE, 135)
 
+    def test_keyboard_assets_path_uses_pyinstaller_meipass(self):
+        config_path = ROOT / "config.py"
+        with tempfile.TemporaryDirectory() as bundle_dir:
+            original_frozen = getattr(sys, "frozen", None)
+            original_meipass = getattr(sys, "_MEIPASS", None)
+            sys.frozen = True
+            sys._MEIPASS = bundle_dir
+            try:
+                spec = importlib.util.spec_from_file_location("config_keyboard_under_test", config_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if original_frozen is None:
+                    delattr(sys, "frozen")
+                else:
+                    sys.frozen = original_frozen
+                if original_meipass is None:
+                    delattr(sys, "_MEIPASS")
+                else:
+                    sys._MEIPASS = original_meipass
+
+        self.assertEqual(
+            module.KEYBOARD_ASSETS_DIR,
+            os.path.join(bundle_dir, "assets", "png", "keyboard"),
+        )
+
+    def test_typing_dog_path_uses_pyinstaller_meipass(self):
+        config_path = ROOT / "config.py"
+        with tempfile.TemporaryDirectory() as bundle_dir:
+            original_frozen = getattr(sys, "frozen", None)
+            original_meipass = getattr(sys, "_MEIPASS", None)
+            sys.frozen = True
+            sys._MEIPASS = bundle_dir
+            try:
+                spec = importlib.util.spec_from_file_location("config_typing_dog_under_test", config_path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+            finally:
+                if original_frozen is None:
+                    delattr(sys, "frozen")
+                else:
+                    sys.frozen = original_frozen
+                if original_meipass is None:
+                    delattr(sys, "_MEIPASS")
+                else:
+                    sys._MEIPASS = original_meipass
+
+        self.assertEqual(
+            module.TYPING_DOG_IMAGE,
+            os.path.join(bundle_dir, "assets", "generated", "typing_dog_halfbody_left45.png"),
+        )
+
 
 class BuildConfigTests(unittest.TestCase):
     def test_local_build_script_does_not_install_dependencies(self):
@@ -73,6 +125,7 @@ class BuildConfigTests(unittest.TestCase):
         self.assertIn("pip install -r requirements.txt", content)
         self.assertIn("python -m PyInstaller", content)
         self.assertIn('--icon "assets\\icon.ico"', content)
+        self.assertIn("pet_keyboard_overlay.py", content)
         self.assertIn("softprops/action-gh-release", content)
 
 
@@ -154,6 +207,25 @@ class StartupConfigTests(unittest.TestCase):
         set_startup_enabled(False, registry=registry)
 
         self.assertFalse(is_startup_enabled(registry=registry))
+
+
+class KeyboardOverlayTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_keyboard_overlay_scales_to_model_aspect_ratio(self):
+        from PySide6.QtCore import QSize
+        from pet_keyboard_overlay import PetKeyboardOverlay
+
+        overlay = PetKeyboardOverlay()
+        self.addCleanup(overlay.close)
+
+        overlay.set_keyboard_width(204)
+
+        self.assertEqual(overlay.size(), QSize(204, 118))
 
 
 class PetWindowBehaviorTests(unittest.TestCase):
@@ -268,6 +340,34 @@ class PetWindowBehaviorTests(unittest.TestCase):
         self.assertTrue(startup_actions[0].isCheckable())
         self.assertTrue(startup_actions[0].isChecked())
 
+    def test_menu_shows_keyboard_toggle_state(self):
+        from pet_menu import PetMenu
+
+        class Stats:
+            hunger = 100
+            cleanliness = 100
+            affection = 50
+            work_mode = True
+            topmost = True
+            click_through = False
+            keyboard_visible = True
+            pet_size = 180
+
+            def can_do(self, action):
+                return True
+
+        menu = PetMenu(Stats(), {})
+        self.addCleanup(menu.close)
+
+        keyboard_actions = [
+            action for action in menu.actions()
+            if "显示键盘" in action.text()
+        ]
+
+        self.assertEqual(len(keyboard_actions), 1)
+        self.assertTrue(keyboard_actions[0].isCheckable())
+        self.assertTrue(keyboard_actions[0].isChecked())
+
     def test_window_toggles_startup_setting(self):
         import pet_window
         from pet_window import PetWindow
@@ -293,6 +393,74 @@ class PetWindowBehaviorTests(unittest.TestCase):
         window._toggle_startup()
 
         self.assertTrue(fake_startup.enabled)
+
+    def test_work_mode_keyboard_overlay_extends_window_height(self):
+        from config import KEYBOARD_WORK_MODE_PET_SIZE, KEYBOARD_WORK_MODE_WIDTH
+        from pet_keyboard_overlay import keyboard_height_for_width
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.work_mode = False
+        window.stats.keyboard_visible = True
+
+        window._toggle_work()
+
+        self.assertTrue(window.keyboard_overlay.isVisible())
+        self.assertEqual(window.width(), KEYBOARD_WORK_MODE_WIDTH)
+        self.assertEqual(
+            window.height(),
+            KEYBOARD_WORK_MODE_PET_SIZE + keyboard_height_for_width(KEYBOARD_WORK_MODE_WIDTH),
+        )
+        self.assertEqual(window.label.width(), KEYBOARD_WORK_MODE_PET_SIZE)
+        self.assertEqual(window.label.x(), (KEYBOARD_WORK_MODE_WIDTH - KEYBOARD_WORK_MODE_PET_SIZE) // 2)
+
+    def test_keyboard_toggle_persists_preference(self):
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.keyboard_visible = False
+
+        window._toggle_keyboard()
+
+        self.assertTrue(window.stats.keyboard_visible)
+
+    def test_keyboard_visibility_switches_between_typing_dog_and_work_movie(self):
+        from pet_window import PetWindow
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.work_mode = False
+        window.stats.keyboard_visible = True
+
+        window._toggle_work()
+
+        self.assertIsNone(window.label.movie())
+        self.assertFalse(window.label.pixmap().isNull())
+
+        window._toggle_keyboard()
+
+        self.assertIsNotNone(window.label.movie())
+        self.assertEqual(window._state, "work")
+
+    def test_missing_typing_dog_keeps_work_movie(self):
+        import pet_window
+        from pet_window import PetWindow
+
+        original_image = pet_window.TYPING_DOG_IMAGE
+        pet_window.TYPING_DOG_IMAGE = str(ROOT / "assets" / "generated" / "missing.png")
+        self.addCleanup(lambda: setattr(pet_window, "TYPING_DOG_IMAGE", original_image))
+
+        window = PetWindow()
+        self.addCleanup(window.close)
+        window.stats.work_mode = False
+        window.stats.keyboard_visible = True
+
+        window._toggle_work()
+
+        self.assertIsNotNone(window.label.movie())
+        self.assertEqual(window._state, "work")
 
     def test_resizing_updates_current_movie_scaled_size(self):
         from PySide6.QtCore import QSize
@@ -815,6 +983,7 @@ class PetStatsLoadTests(unittest.TestCase):
                     "y": None,
                     "topmost": "false",
                     "click_through": "yes",
+                    "keyboard_visible": "yes",
                     "work_mode": 1,
                     "pet_size": SIZE_MAX + 500,
                     "last_feed": "bad",
@@ -832,6 +1001,7 @@ class PetStatsLoadTests(unittest.TestCase):
         self.assertEqual(stats.y, expected_y)
         self.assertFalse(stats.topmost)
         self.assertTrue(stats.click_through)
+        self.assertTrue(stats.keyboard_visible)
         self.assertTrue(stats.work_mode)
         self.assertEqual(stats.pet_size, SIZE_MAX)
         self.assertIsNone(stats._last_action["feed"])

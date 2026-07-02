@@ -78,6 +78,7 @@ class PetMenu(QMenu):
         self._add_action(work_text, "toggle_work", True)
         self._add_check("📌 置顶显示", "toggle_topmost", self.stats.topmost)
         self._add_check("🖱 鼠标穿透", "toggle_click_through", self.stats.click_through)
+        self._add_check("显示键盘", "toggle_keyboard", getattr(self.stats, "keyboard_visible", False))
         self._add_check("开机自启", "toggle_startup", self.startup_enabled)
 
         self.addSeparator()

@@ -7,6 +7,10 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 ASSETS_DIR = os.path.join(BASE_DIR, "assets", "gif")
+KEYBOARD_ASSETS_DIR = os.path.join(BASE_DIR, "assets", "png", "keyboard")
+TYPING_DOG_IMAGE = os.path.join(
+    BASE_DIR, "assets", "generated", "typing_dog_halfbody_left45.png"
+)
 DATA_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "LineDogPet")
 DATA_FILE = os.path.join(DATA_DIR, "pet_data.json")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -16,6 +20,10 @@ WINDOW_SIZE = 180
 WORK_MODE_SIZE = 135
 TICK_MS = 100
 DEFAULT_RIGHT_MARGIN_RATIO = 0.10
+KEYBOARD_ASPECT_WIDTH = 612
+KEYBOARD_ASPECT_HEIGHT = 354
+KEYBOARD_WORK_MODE_WIDTH = 270
+KEYBOARD_WORK_MODE_PET_SIZE = 180
 
 # 尺寸预设
 SIZE_PRESETS = {"大": 270, "中": 180, "小": 120}

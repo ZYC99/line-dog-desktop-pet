@@ -1,5 +1,5 @@
 import sys, os, random, time, warnings
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QSystemTrayIcon, QMenu as QSysMenu
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QSystemTrayIcon, QMenu as QSysMenu, QWidget, QVBoxLayout
 from PySide6.QtGui import QAction, QIcon, QPixmap, QMovie
 from PySide6.QtCore import Qt, QTimer, QPoint, Signal
 
@@ -8,6 +8,7 @@ import pet_startup
 from pet_animation import PetAnimation
 from pet_stats import PetStats
 from pet_menu import PetMenu
+from pet_keyboard_overlay import PetKeyboardOverlay, keyboard_height_for_width
 
 class PetWindow(QMainWindow):
     def __init__(self):
@@ -28,9 +29,16 @@ class PetWindow(QMainWindow):
         self.stats = PetStats()
 
         # GIF 显示标签
-        self.label = QLabel(self)
+        self._content = QWidget(self)
+        self._content_layout = QVBoxLayout(self._content)
+        self._content_layout.setContentsMargins(0, 0, 0, 0)
+        self._content_layout.setSpacing(0)
+        self.label = QLabel(self._content)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setCentralWidget(self.label)
+        self.keyboard_overlay = PetKeyboardOverlay(self._content)
+        self._content_layout.addWidget(self.label, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._content_layout.addWidget(self.keyboard_overlay, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.setCentralWidget(self._content)
 
         # 状态
         self._state = "idle"
@@ -84,10 +92,59 @@ class PetWindow(QMainWindow):
 
     # ===== 窗口 =====
     def _set_size(self, size):
-        self.setFixedSize(size, size)
+        keyboard_width = self._keyboard_width(size)
+        total_width = max(size, keyboard_width)
+        total_height = size + self._keyboard_height(keyboard_width)
+        self.setFixedSize(total_width, total_height)
+        self._content.setFixedSize(total_width, total_height)
         self.label.setFixedSize(size, size)
+        self.keyboard_overlay.set_keyboard_width(keyboard_width)
+        self._apply_keyboard_overlay()
+        self._content_layout.activate()
         self.stats.pet_size = size
         self._sync_current_movie_size()
+
+    def _keyboard_width(self, size):
+        if not self._keyboard_should_show():
+            return size
+        return max(size, KEYBOARD_WORK_MODE_WIDTH)
+
+    def _keyboard_height(self, keyboard_width):
+        return keyboard_height_for_width(keyboard_width) if self._keyboard_should_show() else 0
+
+    def _keyboard_should_show(self):
+        return self.stats.work_mode and self.stats.keyboard_visible
+
+    def _apply_keyboard_overlay(self):
+        self.keyboard_overlay.setVisible(self._keyboard_should_show())
+
+    def _show_typing_dog(self):
+        pixmap = QPixmap(TYPING_DOG_IMAGE)
+        if pixmap.isNull():
+            return False
+        movie = self.label.movie()
+        if movie:
+            movie.stop()
+        self.label.clear()
+        pixmap = pixmap.scaled(
+            self.label.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.label.setPixmap(pixmap)
+        self._state = "work"
+        return True
+
+    def _refresh_keyboard_follow(self):
+        if not self.stats.work_mode:
+            return
+        if self.stats.keyboard_visible and self._show_typing_dog():
+            return
+        if self.anim.has_category("work"):
+            self._play("work")
+
+    def _work_mode_pet_size(self):
+        return KEYBOARD_WORK_MODE_PET_SIZE if self.stats.keyboard_visible else WORK_MODE_SIZE
 
     def _sync_current_movie_size(self):
         movie = self.label.movie()
@@ -525,6 +582,7 @@ class PetWindow(QMainWindow):
             "toggle_work": self._toggle_work,
             "toggle_topmost": self._toggle_topmost,
             "toggle_click_through": self._toggle_click_through,
+            "toggle_keyboard": self._toggle_keyboard,
             "toggle_startup": self._toggle_startup,
             "set_size": self._set_pet_size,
             "quit": self._quit,
@@ -582,18 +640,19 @@ class PetWindow(QMainWindow):
     def _enter_work(self):
         self._cancel_transient_animations_for_work()
         self._work_prev_size = self.stats.pet_size  # 记住用户尺寸
-        self._set_size(WORK_MODE_SIZE)
+        self._set_size(self._work_mode_pet_size())
+        self._refresh_keyboard_follow()
         self.stats.pet_size = self._work_prev_size   # 保留用户尺寸，不被工作模式覆盖
         screen = QApplication.primaryScreen().availableGeometry()
         self.move(
-            screen.width() - WORK_MODE_SIZE - WORK_MARGIN_RIGHT,
-            screen.height() - WORK_MODE_SIZE - WORK_MARGIN_BOTTOM,
+            screen.width() - self.width() - WORK_MARGIN_RIGHT,
+            screen.height() - self.height() - WORK_MARGIN_BOTTOM,
         )
         self._apply_click_through()
         self._apply_topmost()
         self._setup_tray_menu()
         # 先 show 再设动画
-        if self.anim.has_category("work"):
+        if not self.stats.keyboard_visible and self.anim.has_category("work"):
             self._play("work")
 
     def _cancel_transient_animations_for_work(self):
@@ -621,6 +680,16 @@ class PetWindow(QMainWindow):
         self.stats.click_through = not self.stats.click_through
         self._apply_click_through()
         self._setup_tray_menu()
+
+    def _toggle_keyboard(self):
+        self.stats.keyboard_visible = not self.stats.keyboard_visible
+        current_size = self._work_mode_pet_size() if self.stats.work_mode else self.stats.pet_size
+        saved_size = self.stats.pet_size
+        self._set_size(current_size)
+        self._refresh_keyboard_follow()
+        if self.stats.work_mode:
+            self.stats.pet_size = saved_size
+        self._clamp_window_position()
 
     def _is_startup_enabled(self):
         return pet_startup.is_startup_enabled()
