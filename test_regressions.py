@@ -381,6 +381,125 @@ class KeyboardMappingTests(unittest.TestCase):
                 )
 
 
+class KeyboardHookTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from PySide6.QtWidgets import QApplication
+
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_emits_backend_key_events_and_start_stop_are_idempotent(self):
+        from keyboard_hook import KeyboardHook
+
+        class FakeBackend:
+            def __init__(self):
+                self.started = 0
+                self.stopped = 0
+                self.callback = None
+
+            def start(self, callback):
+                self.started += 1
+                self.callback = callback
+                return True
+
+            def stop(self):
+                self.stopped += 1
+
+        backend = FakeBackend()
+        hook = KeyboardHook(backend=backend)
+        events = []
+        hook.key_event.connect(lambda *args: events.append(args))
+
+        self.assertFalse(hook.running)
+        self.assertTrue(hook.start())
+        self.assertTrue(hook.running)
+        self.assertTrue(hook.start())
+        self.assertEqual(backend.started, 1)
+
+        backend.callback(0x41, 0x1E, False, True)
+        self.app.processEvents()
+
+        self.assertEqual(events, [(0x41, 0x1E, False, True)])
+
+        hook.stop()
+        self.assertFalse(hook.running)
+        hook.stop()
+        self.assertEqual(backend.stopped, 1)
+
+    def test_start_failure_leaves_hook_not_running(self):
+        from keyboard_hook import KeyboardHook
+
+        class FailingBackend:
+            def __init__(self):
+                self.started = 0
+                self.stopped = 0
+
+            def start(self, callback):
+                self.started += 1
+                return False
+
+            def stop(self):
+                self.stopped += 1
+
+        backend = FailingBackend()
+        hook = KeyboardHook(backend=backend)
+
+        self.assertFalse(hook.start())
+        self.assertFalse(hook.running)
+        self.assertEqual(backend.started, 1)
+        hook.stop()
+        self.assertEqual(backend.stopped, 0)
+
+    def test_stop_failure_keeps_hook_running_and_prevents_duplicate_start(self):
+        from keyboard_hook import KeyboardHook
+
+        class StopFailingBackend:
+            def __init__(self):
+                self.started = 0
+                self.stopped = 0
+
+            def start(self, callback):
+                self.started += 1
+                return True
+
+            def stop(self):
+                self.stopped += 1
+                return False
+
+        backend = StopFailingBackend()
+        hook = KeyboardHook(backend=backend)
+
+        self.assertTrue(hook.start())
+        hook.stop()
+
+        self.assertTrue(hook.running)
+        self.assertEqual(backend.stopped, 1)
+        self.assertTrue(hook.start())
+        self.assertEqual(backend.started, 1)
+
+    def test_native_backend_stop_failure_keeps_backend_started(self):
+        from keyboard_hook import WindowsLowLevelKeyboardBackend
+
+        class StillAliveThread:
+            joined = False
+
+            def is_alive(self):
+                return True
+
+            def join(self, timeout=None):
+                self.joined = True
+
+        backend = WindowsLowLevelKeyboardBackend()
+        thread = StillAliveThread()
+        backend._thread = thread
+        backend._started = True
+
+        self.assertFalse(backend.stop())
+        self.assertTrue(thread.joined)
+        self.assertTrue(backend._started)
+        self.assertIs(backend._thread, thread)
+
+
 class PetWindowBehaviorTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
